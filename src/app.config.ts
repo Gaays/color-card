@@ -1,5 +1,6 @@
 export default defineAppConfig({
   appId: 'wx331d8e2002a9ce05',
+  lazyCodeLoading: 'requiredComponents',
   pages: [
     'pages/index/index'
   ],

@@ -57,6 +57,7 @@
     "@babel/core": "^7.24.4",
     "@babel/plugin-proposal-class-properties": "7.14.5",
     "@tarojs/cli": "4.0.9",
+    "@tarojs/plugin-terser": "^2.2.10",
     "@tarojs/vite-runner": "4.0.9",
     "@vitejs/plugin-vue": "^5.0.4",
     "@vitejs/plugin-vue-jsx": "^3.1.0",

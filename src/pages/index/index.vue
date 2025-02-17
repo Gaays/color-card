@@ -4,35 +4,51 @@ import { useReady } from '@tarojs/taro'
 import Taro from '@tarojs/taro'
 
 type ColorPreset = {
+  index: number;
   name: string;
   color: string;
   transparency: number;
   brightness: number;
+  removable?: boolean;
 }
 
 const presetList = ref<ColorPreset[]>([
   {
-    name: '纯黑',
-    color: 'hsla(0, 0%, 0%, 1)',
-    transparency: 100,
-    brightness: 0.5
-  },
-  {
+    index: 1,
     name: '纯白',
     color: 'hsla(0, 0%, 100%, 1)',
     transparency: 100,
-    brightness: 0.5
+    brightness: 100,
+    removable: false
   },
   {
+    index: 2,
     name: '中性灰',
     color: 'hsla(0, 0%, 50%, 1)',
     transparency: 100,
-    brightness: 0.5
+    brightness: 50,
+    removable: false
+  },
+  {
+    index: 3,
+    name: '鲜艳红',
+    color: 'hsla(0, 100%, 50%, 1)',
+    transparency: 100,
+    brightness: 50,
+    removable: true
   }
 ]);
 
 const newPresetName = ref('');
 const activePreset = ref('')
+const activeData = ref<ColorPreset>({
+  index: 2,
+  name: '中性灰',
+  color: 'hsla(0, 0%, 50%, 1)',
+  transparency: 100,
+  brightness: 50,
+  removable: false
+})
 const backgroundColor = ref('hsla(0, 100%, 50%, 1)');
 const hueValue = ref(0);
 const transparency = ref(100);
@@ -55,7 +71,7 @@ const loadPresets = () => {
     }
     selectPreset(presetList.value[0])
   } else {
-    selectPreset(presetList.value[2])
+    selectPreset(presetList.value[1])
   }
 };
 
@@ -84,7 +100,6 @@ const hslToHex = (h: number, s: number, l: number) => {
 };
 
 const updateBackgroundColor = (event?: Event, type?: string) => {
-  console.log('🚀 ~ updateBackgroundColor ~ event:', event);
   if (event) {
     activePreset.value = '';
     newPresetName.value = '';
@@ -101,24 +116,26 @@ const updateBackgroundColor = (event?: Event, type?: string) => {
 
 // 修改屏幕亮度
 const updateScreenBrightness = (event: Event) => {
-  const brightness = event.detail.value;
-  Taro.setScreenBrightness({ value: brightness });
+  brightness.value = event.detail.value;
+  Taro.setScreenBrightness({ value: brightness.value / 100 });
 };
 
 const selectPreset = (preset: ColorPreset) => {
+  activeData.value = preset;
   const hsla = preset.color.match(/(\d+(\.\d+)?)/g)?.map(Number) || [0, 0, 0, 1];
-  // 特殊处理黑白灰（饱和度设为0）
-  if (preset.name.includes('黑') || preset.name.includes('白') || preset.name.includes('灰')) {
+
+  if (preset.removable === false) {
     hueValue.value = 0; // 重置色相
     transparency.value = hsla[3] * 100;
-    brightness.value = hsla[2]; // 使用亮度值直接对应灰度
-    backgroundColor.value = `hsla(0, 0%, ${hsla[2]}%, ${hsla[3]})`;
+    brightness.value = preset.brightness; // 使用亮度值直接对应灰度
+    backgroundColor.value = `hsla(0, 0%, ${brightness.value}%, ${hsla[3]})`;
   } else {
     hueValue.value = hsla[0];
-    transparency.value = hsla[3] * 100;
+    transparency.value = preset.transparency;
     brightness.value = preset.brightness;
     updateBackgroundColor();
   }
+  Taro.setScreenBrightness({ value: brightness.value / 100 });
 
   activePreset.value = preset.color;
   newPresetName.value = preset.name;
@@ -128,10 +145,12 @@ const addPreset = () => {
   if (presetList.value.some(p => p.color === backgroundColor.value)) return;
 
   const newPreset: ColorPreset = {
+    index: presetList.value.length,
     name: newPresetName.value || `预设${presetList.value.length + 1}`,
     color: backgroundColor.value,
     transparency: transparency.value,
-    brightness: brightness.value
+    brightness: brightness.value,
+    removable: true,
   };
 
   presetList.value.push(newPreset);
@@ -146,7 +165,6 @@ const deletePreset = (index: number) => {
 };
 
 useReady(async () => {
-  console.log(await Taro.getScreenBrightness());
   const systemBrightness = await Taro.getScreenBrightness();
   brightness.value = systemBrightness.value;
 
@@ -174,25 +192,32 @@ useReady(async () => {
               opacity: item.color.split(', ')[3]?.replace(')', '') || 1
             }"></view>
             <view class="preset-item-name">{{ item.name }}</view>
-            <view class="delete-button" @tap.stop="deletePreset(index)">x</view>
+            <view v-if="item.removable" class="delete-button" @tap.stop="deletePreset(index)">x</view>
           </view>
         </view>
       </view>
 
       <view class="control-group">
-        <view class="color-scroll-box">
-          <view class="color-bar"></view>
-          <slider min="0" max="360" step="1" :value="hueValue" trackSize="20" activeColor="transparent"
-            backgroundColor="transparent" class="color-slider" @changing="e => updateBackgroundColor(e, 'color')" />
-        </view>
+        <template v-if="activeData.removable">
+          <view class="color-scroll-box">
+            <view class="color-bar"></view>
+            <slider min="0" max="360" step="1" :block-size="28" :value="hueValue" trackSize="20"
+              activeColor="transparent" backgroundColor="transparent" class="color-slider"
+              @changing="e => updateBackgroundColor(e, 'color')" @change="e => updateBackgroundColor(e, 'color')" />
+          </view>
 
-        <view class="transparency-scroll-box">
-          <slider min="0" max="100" step="1" :value="transparency"
-            @changing="e => updateBackgroundColor(e, 'transparency')" />
-        </view>
+          <view class="transparency-scroll-box">
+            <text class="section__title">透明度</text>
+            <slider min="0" max="100" step="1" :show-value="true" :value="transparency"
+              @changing="e => updateBackgroundColor(e, 'transparency')"
+              @change="e => updateBackgroundColor(e, 'transparency')" />
+          </view>
+        </template>
 
         <view class="brightness-scroll-box">
-          <slider min="0" max="1" step="0.1" :value="brightness" @changing="updateScreenBrightness" />
+          <text class="section__title">亮度</text>
+          <slider min="0" max="100" step="1" :show-value="true" :value="brightness" @changing="updateScreenBrightness"
+            @change="updateScreenBrightness" />
         </view>
       </view>
 
@@ -234,7 +259,7 @@ useReady(async () => {
 
   .options-box {
     position: absolute;
-    bottom: 30px;
+    bottom: 200px;
     left: 50%;
     transform: translateX(-50%);
     // width: 800px;
@@ -243,8 +268,8 @@ useReady(async () => {
     width: 90%; // 改为百分比宽度
     max-width: 800px; // 保留最大宽度
     height: auto; // 改为自动高度
-    min-height: 500px; // 添加最小高度
-    padding: 15px;
+    min-height: 300px; // 添加最小高度
+    padding: 30px;
 
     border-radius: 18px;
     backdrop-filter: blur(8px);
@@ -252,15 +277,6 @@ useReady(async () => {
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     transition: all 0.3s;
     overflow: hidden;
-
-    // 移动端适配
-    @media (max-width: 768px) {
-      bottom: 20px;
-      width: 95%;
-      min-height: 500px;
-      padding: 10px;
-      border-radius: 12px;
-    }
 
     .grayscale-indicator {
       position: absolute;
@@ -296,7 +312,7 @@ useReady(async () => {
           padding: 12px 15px;
           border-radius: 10px;
           font-family: monospace;
-          font-size: 14px;
+          font-size: 24px;
           letter-spacing: 1px;
           transition: all 0.2s;
           text-transform: uppercase;
@@ -317,7 +333,7 @@ useReady(async () => {
           color: white;
           padding: 12px 15px;
           border-radius: 10px;
-          font-size: 14px;
+          font-size: 24px;
           transition: all 0.2s;
 
           &::placeholder {
@@ -330,29 +346,14 @@ useReady(async () => {
           }
         }
 
-        .hex-input,
-        .name-input {
-
-          // 移动端调整输入框样式
-          @media (max-width: 768px) {
-            flex-shrink: 1;
-            padding: 10px 12px;
-            font-size: 13px;
-          }
-        }
-
       }
     }
 
     .preset-container {
       overflow-x: auto;
+      margin-top: 20px;
       margin-bottom: 30px;
       padding-bottom: 10px;
-
-      @media (max-width: 768px) {
-        margin-bottom: 20px;
-        padding-bottom: 5px;
-      }
 
       &::-webkit-scrollbar {
         height: 6px;
@@ -364,15 +365,11 @@ useReady(async () => {
       }
 
       .preset-box {
-        margin-top: 15px;
+        margin-top: 25px;
         display: flex;
-        gap: 10px;
+        gap: 20px;
         min-width: min-content;
-
-        @media (max-width: 768px) {
-          gap: 8px;
-          margin-top: 15px;
-        }
+        padding: 0 10px 0 3px;
 
         .preset-item {
           position: relative;
@@ -381,49 +378,39 @@ useReady(async () => {
           flex-shrink: 0;
 
 
-
           &-color {
-            width: 60px;
-            height: 60px;
+            width: 100px;
+            height: 100px;
             border-radius: 10px;
             border: 2px solid rgba(255, 255, 255, 0.5);
             transition: all 0.2s;
           }
 
           &-name {
+            width: 100px;
             color: white;
             text-align: center;
-            font-size: 12px;
+            font-size: 25px;
             margin-top: 8px;
+            // 溢出省略号
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
             transition: color 0.2s;
-          }
-
-          @media (max-width: 768px) {
-            transform: scale(0.9);
-
-            &-color {
-              width: 50px;
-              height: 50px;
-            }
-
-            &-name {
-              font-size: 11px;
-            }
           }
 
           .delete-button {
             display: none;
             position: absolute;
-            top: -8px;
-            right: -8px;
-            width: 24px;
-            height: 24px;
+            top: -12px;
+            right: -12px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             color: white;
-            font-size: 24px;
+            font-size: 40px;
             text-align: center;
-            line-height: 22px;
+            line-height: 30px;
             pointer-events: none;
           }
 
@@ -459,10 +446,13 @@ useReady(async () => {
         position: relative;
 
         .color-slider {
-          z-index: 111;
+          z-index: 11;
+          position: relative;
         }
 
         .color-bar {
+          overflow: hidden;
+          border-radius: 40px;
           position: absolute;
           top: 0px;
           left: 0;
@@ -481,7 +471,7 @@ useReady(async () => {
 
   .btn-group {
     position: fixed;
-    bottom: 50px;
+    bottom: 100px;
     left: 50%;
     transform: translateX(-50%);
     margin-top: 25px;
@@ -489,26 +479,19 @@ useReady(async () => {
     justify-content: center;
 
     .add-button {
-      width: 80px;
-      height: 40px;
-    }
-
-    @media (max-width: 768px) {
-      bottom: 30px;
-
-      .add-button {
-        width: 70px;
-        height: 35px;
-        font-size: 18px;
-      }
+      width: 120px;
+      height: 80px;
+      font-size: 40px;
     }
   }
 }
 
 .color-card.hidden {
   .options-box {
+    min-height: 0;
     height: 0;
     opacity: 0;
+    bottom: 0;
     pointer-events: none;
     overflow: hidden;
 
