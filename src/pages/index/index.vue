@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { useReady } from "@tarojs/taro";
+import { nextTick, useReady } from "@tarojs/taro";
 import Taro from "@tarojs/taro";
 
 type ColorPreset = {
@@ -65,6 +65,40 @@ const saturationValue = ref(100);
 const lightness = ref(100);
 const brightness = ref(50);
 const hidden = ref(false);
+const lock = ref(false);
+
+const handleOptionBoxVisible = () => {
+  console.log(lock.value);
+  if (!lock.value) {
+    hidden.value = !hidden.value;
+    Taro.vibrateShort({ type: "light" });
+  } else {
+    Taro.showToast({
+      title: "已锁定，请长按解锁",
+      icon: "none",
+      duration: 2000,
+    });
+    Taro.vibrateShort({ type: "medium" });
+  }
+};
+
+const handleLock = () => {
+  lock.value = !lock.value;
+  Taro.vibrateShort({ type: "heavy" });
+  if (lock.value) {
+    Taro.showToast({
+      title: "已锁定",
+      icon: "none",
+      duration: 2000,
+    });
+  } else {
+    Taro.showToast({
+      title: "已解锁",
+      icon: "none",
+      duration: 2000,
+    });
+  }
+};
 
 // 修改后的HEX计算逻辑
 const hexColor = computed(() => {
@@ -126,7 +160,6 @@ const updateBackgroundColor = (event?: Event, type?: string) => {
       } else {
         hueValue.value = 360;
       }
-      console.log(hueValue.value);
     } else if (type === "lightness") {
       lightness.value = value;
     } else if (type === "saturation") {
@@ -135,6 +168,14 @@ const updateBackgroundColor = (event?: Event, type?: string) => {
   }
 
   backgroundColor.value = `hsl(${hueValue.value}, ${saturationValue.value}%, ${lightness.value}%)`;
+  Taro.setNavigationBarColor({
+    frontColor: "#000000",
+    backgroundColor: hexColor.value,
+    animation: {
+      duration: 200,
+      timingFunc: "easeInOut",
+    },
+  });
 };
 
 // 修改屏幕亮度
@@ -148,7 +189,6 @@ const updateScreenBrightness = (event: Event) => {
 const selectPreset = (preset: ColorPreset) => {
   activeData.value = preset;
   hueValue.value = preset.hue;
-  console.log("🚀 ~ selectPreset ~ hueValue.value:", hueValue.value);
   lightness.value = preset.lightness;
   saturationValue.value = preset.saturation;
   brightness.value = preset.brightness;
@@ -158,6 +198,7 @@ const selectPreset = (preset: ColorPreset) => {
 
   activePreset.value = preset.color;
   newPresetName.value = preset.name;
+  Taro.vibrateShort({ type: "light" });
 };
 
 const addPreset = () => {
@@ -176,6 +217,7 @@ const addPreset = () => {
   newPresetName.value = "";
   activePreset.value = "";
   savePresets();
+  Taro.vibrateShort({ type: "light" });
 };
 
 const deletePreset = (index: number) => {
@@ -225,21 +267,49 @@ const gradientStyle = computed(() => ({
 }));
 
 const cameraFlag = ref(false);
+const cameraVisible = ref(false);
 const handleCamera = () => {
   cameraFlag.value = !cameraFlag.value;
+  Taro.vibrateShort({ type: "light" });
+
+  if (!cameraFlag.value) {
+    setTimeout(() => {
+      cameraVisible.value = false;
+    }, 600);
+  } else {
+    setTimeout(() => {
+      cameraVisible.value = true;
+    }, 500);
+  }
 };
 
 const cameraError = () => {
   Taro.showToast({
     title: "无摄像头权限",
+    icon: "none",
     duration: 2000,
+  });
+
+  Taro.getSetting({
+    success: function (res) {
+      if (!res.authSetting["scope.camera"]) {
+        Taro.authorize({
+          scope: "scope.camera",
+          success: function () {
+            Taro.createCameraContext();
+          },
+        });
+      }
+    },
   });
 };
 
 useReady(async () => {
   const systemBrightness = await Taro.getScreenBrightness();
   brightness.value = systemBrightness.value;
-
+  Taro.setNavigationBarTitle({
+    title: "",
+  });
   loadPresets();
 });
 </script>
@@ -253,15 +323,30 @@ useReady(async () => {
       title="摄像头"
       :style="buttonStyle"
       class="add-button camera"
+      :class="{ flipped: cameraFlag }"
       @tap="handleCamera"
     >
-      <image
-        :style="[{ width: '30px', height: '30px' }]"
-        src="/src/assets/svg/camera.svg"
-      />
+      <view class="camera-front">
+        <image
+          :style="[{ width: '30px', height: '30px' }]"
+          src="/src/assets/svg/camera.svg"
+          class="camera-icon"
+        />
+      </view>
     </button>
-
-    <camera devicePosition="front" class="camera-vision" @Error="cameraError" />
+    <view
+      class="add-button camera-back"
+      :style="buttonStyle"
+      :class="{ flipped: cameraFlag }"
+      @tap.stop="handleCamera"
+    >
+      <camera
+        v-if="cameraVisible"
+        devicePosition="front"
+        class="camera-vision"
+        @Error="cameraError"
+      />
+    </view>
 
     <view :class="['options-box']" :style="buttonStyle">
       <view class="color-header">
@@ -385,11 +470,24 @@ useReady(async () => {
     </view>
     <view class="btn-group">
       <button
-        class="add-button"
-        @tap="() => (hidden = !hidden)"
+        class="add-button hide-btn"
         :style="buttonStyle"
+        @tap="handleOptionBoxVisible"
+        @longpress="handleLock"
       >
-        {{ hidden ? "显示" : "隐藏" }}
+        <image
+          v-if="lock"
+          :style="[
+            {
+              width: '20px',
+              height: '20px',
+              fill: textColor,
+              color: textColor,
+            },
+          ]"
+          src="/src/assets/svg/lock.svg"
+          class="camera-icon"
+        />{{ hidden ? "显示" : "隐藏" }}
       </button>
     </view>
   </view>
@@ -434,16 +532,53 @@ useReady(async () => {
     top: 100px;
     width: 150px;
     height: 200px;
+    padding: 0;
+    transform-origin: center center;
+    transform-style: preserve-3d;
+    perspective: 1000px;
+    transition: all 0.6s;
+    opacity: 1;
+    &.flipped {
+      transform: translateX(-50%) rotateY(180deg);
+      left: 50%;
+      opacity: 0;
+    }
+
+    .camera-front {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
   }
 
-  .camera-vision {
+  .camera-back {
     position: fixed;
-    left: 50%;
+    left: 20px;
     top: 100px;
-    transform: translateX(-50%);
     width: 150px;
     height: 200px;
+    border-radius: 10px;
+    overflow: hidden;
     background-color: #fff;
+    transform-origin: center center;
+    transition: all 0.6s;
+    backface-visibility: hidden;
+    transform: perspective(1000px) rotateY(-180deg);
+    opacity: 0;
+    &.flipped {
+      transform: translateX(-50%) rotateY(0deg);
+      opacity: 1;
+      top: 50px;
+      left: 50%;
+      width: 300px;
+      height: 300px;
+    }
+    .camera-vision {
+      width: 100%;
+      height: 100%;
+    }
   }
 
   .options-box {
@@ -735,9 +870,14 @@ useReady(async () => {
     justify-content: center;
 
     .add-button {
-      width: 120px;
-      height: 80px;
+      width: unset;
+      height: unset;
+      padding: 20px 20px;
       font-size: 40px;
+      line-height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
   }
 }
