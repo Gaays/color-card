@@ -4,62 +4,52 @@ import { nextTick, useReady } from "@tarojs/taro";
 import Taro from "@tarojs/taro";
 
 type ColorPreset = {
-  index: number;
   name: string;
   color: string;
   hue: number;
   saturation: number;
   lightness: number;
   brightness: number;
-  removable?: boolean;
 };
 
 const presetList = ref<ColorPreset[]>([
   {
-    index: 1,
     name: "纯白",
-    color: "hsla(0, 0%, 100%, 1)",
+    color: "hsl(0, 0%, 100%)",
     hue: 0,
     saturation: 0,
     lightness: 100,
     brightness: 50,
-    removable: false,
   },
   {
-    index: 2,
     name: "中性灰",
-    color: "hsla(0, 0%, 50%, 1)",
+    color: "hsl(0, 0%, 50%)",
     hue: 0,
     saturation: 0,
     lightness: 50,
     brightness: 50,
-    removable: false,
   },
   {
-    index: 3,
     name: "鲜艳红",
-    color: "hsla(0, 100%, 50%, 1)",
+    color: "hsl(0, 100%, 50%)",
     hue: 0,
     saturation: 100,
     lightness: 50,
     brightness: 50,
-    removable: true,
   },
 ]);
 
 const newPresetName = ref("");
 const activePreset = ref("");
 const activeData = ref<ColorPreset>({
-  index: 2,
   name: "中性灰",
-  color: "hsla(0, 0%, 50%, 1)",
+  color: "hsl(0, 0%, 50%, 1)",
   hue: 0,
   saturation: 0,
   lightness: 100,
   brightness: 50,
-  removable: false,
 });
-const backgroundColor = ref("hsla(0, 100%, 50%, 1)");
+const backgroundColor = ref("hsl(0, 100%, 50%, 1)");
 const hueValue = ref(0);
 const saturationValue = ref(100);
 const lightness = ref(100);
@@ -168,14 +158,6 @@ const updateBackgroundColor = (event?: Event, type?: string) => {
   }
 
   backgroundColor.value = `hsl(${hueValue.value}, ${saturationValue.value}%, ${lightness.value}%)`;
-  Taro.setNavigationBarColor({
-    frontColor: "#000000",
-    backgroundColor: hexColor.value,
-    animation: {
-      duration: 200,
-      timingFunc: "easeInOut",
-    },
-  });
 };
 
 // 修改屏幕亮度
@@ -202,15 +184,30 @@ const selectPreset = (preset: ColorPreset) => {
 };
 
 const addPreset = () => {
+  // 仅能存颜色、屏幕亮度不同的预设
+  console.log(presetList.value, backgroundColor.value, brightness.value);
+  if (
+    presetList.value.find(
+      (preset) =>
+        preset.color === backgroundColor.value &&
+        preset.brightness === brightness.value
+    )
+  ) {
+    Taro.showToast({
+      title: "颜色已存在",
+      icon: "none",
+      duration: 2000,
+    });
+    return;
+  }
+
   const newPreset: ColorPreset = {
-    index: presetList.value.length,
     name: newPresetName.value || `预设${presetList.value.length + 1}`,
     color: backgroundColor.value,
     hue: hueValue.value,
     saturation: saturationValue.value,
     lightness: lightness.value,
     brightness: brightness.value,
-    removable: true,
   };
 
   presetList.value.push(newPreset);
@@ -248,15 +245,16 @@ const buttonStyle = computed(() => {
   const [h, s, l] = hsla;
 
   // 根据背景色计算按钮样式
-  const bgOpacity = l < 50 ? 0.2 : 0.15;
+  const bgOpacity = l < 50 ? 1 : 0.15;
   const bgColor =
     l < 50
-      ? `hsla(${h}, 15%, 90%, ${bgOpacity})`
+      ? `hsla(${h}, 80%, 90%, ${bgOpacity})`
       : `hsla(${h}, 15%, 20%, ${bgOpacity})`;
 
   return {
     backgroundColor: bgColor,
     color: textColor.value,
+    border: `1px solid ${textColor.value}`,
   };
 });
 
@@ -307,9 +305,6 @@ const cameraError = () => {
 useReady(async () => {
   const systemBrightness = await Taro.getScreenBrightness();
   brightness.value = systemBrightness.value;
-  Taro.setNavigationBarTitle({
-    title: "",
-  });
   loadPresets();
 });
 </script>
@@ -367,10 +362,10 @@ useReady(async () => {
             :style="{ color: textColor }"
           />
           <button
-            class="add-button"
-            @tap="addPreset"
+            class="add-button preset-btn"
             title="添加当前颜色到预设"
             :style="buttonStyle"
+            @tap="addPreset"
           >
             添加到预设
           </button>
@@ -383,7 +378,11 @@ useReady(async () => {
             v-for="(item, index) in presetList"
             :key="index"
             class="preset-item"
-            :class="{ selected: item.color === activePreset }"
+            :class="{
+              selected:
+                item.color === activePreset &&
+                item.brightness === activeData.brightness,
+            }"
             @tap="selectPreset(item)"
           >
             <view
@@ -529,7 +528,7 @@ useReady(async () => {
   .camera {
     position: fixed;
     left: 20px;
-    top: 100px;
+    top: 200px;
     width: 150px;
     height: 200px;
     padding: 0;
@@ -556,10 +555,10 @@ useReady(async () => {
   .camera-back {
     position: fixed;
     left: 20px;
-    top: 100px;
+    top: 200px;
     width: 150px;
     height: 200px;
-    border-radius: 10px;
+    border-radius: 20px;
     overflow: hidden;
     background-color: #fff;
     transform-origin: center center;
@@ -570,7 +569,7 @@ useReady(async () => {
     &.flipped {
       transform: translateX(-50%) rotateY(0deg);
       opacity: 1;
-      top: 50px;
+      top: 180px;
       left: 50%;
       width: 300px;
       height: 300px;
@@ -673,6 +672,7 @@ useReady(async () => {
         .add-button {
           width: 150px;
           font-size: 25px;
+          border: none !important;
         }
       }
     }
