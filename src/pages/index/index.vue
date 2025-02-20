@@ -580,7 +580,6 @@ useReady(async () => {
     @extend .color-picker__btn;
     width: 150px;
     font-size: 25px;
-    border: none !important;
   }
 
   &__presets {
