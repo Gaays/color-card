@@ -1,55 +1,41 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { nextTick, useReady } from "@tarojs/taro";
+import { useReady } from "@tarojs/taro";
 import Taro from "@tarojs/taro";
+import { hslToHex, getTextColor, getButtonStyle } from "../../utils/color";
+import { useColorPreset } from "../../composables/useColorPreset";
+import type { ColorPreset } from "../../types/color";
 
-type ColorPreset = {
-  name: string;
-  color: string;
-  hue: number;
-  saturation: number;
-  lightness: number;
-  brightness: number;
-};
+// 节流函数
+function throttle(fn: Function, delay: number) {
+  let lastTime = 0;
+  return function (...args: any[]) {
+    const now = Date.now();
+    if (now - lastTime >= delay) {
+      fn.apply(this, args);
+      lastTime = now;
+    }
+  };
+}
 
-const presetList = ref<ColorPreset[]>([
-  {
-    name: "纯白",
-    color: "hsl(0, 0%, 100%)",
-    hue: 0,
-    saturation: 0,
-    lightness: 100,
-    brightness: 50,
-  },
-  {
-    name: "中性灰",
-    color: "hsl(0, 0%, 50%)",
-    hue: 0,
-    saturation: 0,
-    lightness: 50,
-    brightness: 50,
-  },
-  {
-    name: "鲜艳红",
-    color: "hsl(0, 100%, 50%)",
-    hue: 0,
-    saturation: 100,
-    lightness: 50,
-    brightness: 50,
-  },
-]);
+const {
+  presetList,
+  loadPresets,
+  addPreset: addPresetToList,
+  deletePreset,
+} = useColorPreset();
 
 const newPresetName = ref("");
 const activePreset = ref("");
 const activeData = ref<ColorPreset>({
-  name: "中性灰",
-  color: "hsl(0, 0%, 50%, 1)",
-  hue: 0,
-  saturation: 0,
-  lightness: 100,
+  name: "晨曦粉",
+  color: "hsl(350, 70%, 85%)",
+  hue: 350,
+  saturation: 70,
+  lightness: 85,
   brightness: 50,
 });
-const backgroundColor = ref("hsl(0, 100%, 50%, 1)");
+const backgroundColor = ref("hsl(350, 70%, 85%)");
 const hueValue = ref(0);
 const saturationValue = ref(100);
 const lightness = ref(100);
@@ -58,7 +44,6 @@ const hidden = ref(false);
 const lock = ref(false);
 
 const handleOptionBoxVisible = () => {
-  console.log(lock.value);
   if (!lock.value) {
     hidden.value = !hidden.value;
     Taro.vibrateShort({ type: "light" });
@@ -91,52 +76,31 @@ const handleLock = () => {
 };
 
 // 修改后的HEX计算逻辑
-const hexColor = computed(() => {
-  const hsla = backgroundColor.value.match(/(\d+(\.\d+)?)/g)?.map(Number) || [
-    0, 100, 50, 1,
-  ];
-  return hslToHex(hsla[0], hsla[1], hsla[2]);
+const parsedHSL = computed(() => {
+  const matches = backgroundColor.value.match(
+    /hsl\((\d+),\s*(\d+)%,\s*(\d+)%/i
+  );
+  return matches
+    ? [Number(matches[1]), Number(matches[2]), Number(matches[3])]
+    : [0, 100, 50];
 });
 
-const loadPresets = () => {
-  const saved = Taro.getStorageSync("colorPresets");
-  if (saved) {
-    try {
-      presetList.value = JSON.parse(saved);
-    } catch (e) {
-      console.error("Failed to load presets:", e);
-    }
-    selectPreset(presetList.value[0]);
-  } else {
-    selectPreset(presetList.value[1]);
-  }
-};
+const hexColor = computed(() => {
+  const [h, s, l] = parsedHSL.value;
+  return hslToHex(h, s, l);
+});
 
-const savePresets = () => {
-  Taro.setStorageSync("colorPresets", JSON.stringify(presetList.value));
-};
+const textColor = computed(() => {
+  const [h, s, l] = parsedHSL.value;
+  return getTextColor(h, s, l);
+});
 
-const hslToHex = (h: number, s: number, l: number) => {
-  // 处理灰度色（饱和度0%的情况）
-  if (s === 0) {
-    const value = Math.round((l / 100) * 255);
-    const hex = value.toString(16).padStart(2, "0");
-    return `#${hex}${hex}${hex}`.toUpperCase();
-  }
+const buttonStyle = computed(() => {
+  const [h, s, l] = parsedHSL.value;
+  return getButtonStyle(h, s, l, textColor.value);
+});
 
-  l /= 100;
-  const a = (s * Math.min(l, 1 - l)) / 100;
-  const f = (n: number) => {
-    const k = (n + h / 30) % 12;
-    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
-    return Math.round(255 * color)
-      .toString(16)
-      .padStart(2, "0");
-  };
-  return `#${f(0)}${f(8)}${f(4)}`.toUpperCase();
-};
-
-const updateBackgroundColor = (event?: Event, type?: string) => {
+const updateBackgroundColor = throttle((event?: Event, type?: string) => {
   if (event) {
     activePreset.value = "";
     newPresetName.value = "";
@@ -158,17 +122,17 @@ const updateBackgroundColor = (event?: Event, type?: string) => {
   }
 
   backgroundColor.value = `hsl(${hueValue.value}, ${saturationValue.value}%, ${lightness.value}%)`;
-};
+}, 16);
 
 // 修改屏幕亮度
-const updateScreenBrightness = (event: Event) => {
+const updateScreenBrightness = throttle((event: Event) => {
   const selectValue = event.detail.value;
   const value = selectValue < 0 ? 0 : selectValue > 100 ? 100 : selectValue;
   brightness.value = value;
   Taro.setScreenBrightness({ value: value / 100 });
-};
+}, 16);
 
-const selectPreset = (preset: ColorPreset) => {
+const selectPreset = (preset: ColorPreset, silent = false) => {
   activeData.value = preset;
   hueValue.value = preset.hue;
   lightness.value = preset.lightness;
@@ -180,27 +144,12 @@ const selectPreset = (preset: ColorPreset) => {
 
   activePreset.value = preset.color;
   newPresetName.value = preset.name;
-  Taro.vibrateShort({ type: "light" });
+  if (!silent) {
+    Taro.vibrateShort({ type: "light" });
+  }
 };
 
 const addPreset = () => {
-  // 仅能存颜色、屏幕亮度不同的预设
-  console.log(presetList.value, backgroundColor.value, brightness.value);
-  if (
-    presetList.value.find(
-      (preset) =>
-        preset.color === backgroundColor.value &&
-        preset.brightness === brightness.value
-    )
-  ) {
-    Taro.showToast({
-      title: "颜色已存在",
-      icon: "none",
-      duration: 2000,
-    });
-    return;
-  }
-
   const newPreset: ColorPreset = {
     name: newPresetName.value || `预设${presetList.value.length + 1}`,
     color: backgroundColor.value,
@@ -210,53 +159,11 @@ const addPreset = () => {
     brightness: brightness.value,
   };
 
-  presetList.value.push(newPreset);
-  newPresetName.value = "";
-  activePreset.value = "";
-  savePresets();
-  Taro.vibrateShort({ type: "light" });
-};
-
-const deletePreset = (index: number) => {
-  presetList.value.splice(index, 1);
-  savePresets();
-};
-
-const textColor = computed(() => {
-  const hsla = backgroundColor.value.match(/(d+(.d+)?)/g)?.map(Number) || [
-    0, 100, 50, 1,
-  ];
-  const [h, s, l] = hsla;
-
-  // 根据背景色的亮度决定文字颜色
-  if (l < 50) {
-    // 深色背景使用柔和的浅色文字
-    return `hsla(${h}, 15%, 90%, 1)`;
-  } else {
-    // 浅色背景使用柔和的深色文字
-    return `hsla(${h}, 15%, 20%, 1)`;
+  if (addPresetToList(newPreset)) {
+    newPresetName.value = "";
+    activePreset.value = "";
   }
-});
-
-const buttonStyle = computed(() => {
-  const hsla = backgroundColor.value.match(/(d+(.d+)?)/g)?.map(Number) || [
-    0, 100, 50, 1,
-  ];
-  const [h, s, l] = hsla;
-
-  // 根据背景色计算按钮样式
-  const bgOpacity = l < 50 ? 1 : 0.15;
-  const bgColor =
-    l < 50
-      ? `hsla(${h}, 80%, 90%, ${bgOpacity})`
-      : `hsla(${h}, 15%, 20%, ${bgOpacity})`;
-
-  return {
-    backgroundColor: bgColor,
-    color: textColor.value,
-    border: `1px solid ${textColor.value}`,
-  };
-});
+};
 
 const gradientStyle = computed(() => ({
   "--hue": String(hueValue.value),
@@ -306,63 +213,64 @@ useReady(async () => {
   const systemBrightness = await Taro.getScreenBrightness();
   brightness.value = systemBrightness.value;
   loadPresets();
+  selectPreset(presetList.value[0], true);
 });
 </script>
 
 <template>
   <view
-    :class="['color-card', { hidden: hidden }]"
+    :class="['color-picker', { 'color-picker--hidden': hidden }]"
     :style="[{ 'background-color': backgroundColor }, gradientStyle]"
   >
     <button
       title="摄像头"
       :style="buttonStyle"
-      class="add-button camera"
-      :class="{ flipped: cameraFlag }"
+      class="color-picker__camera-btn"
+      :class="{ 'color-picker__camera-btn--flipped': cameraFlag }"
       @tap="handleCamera"
     >
-      <view class="camera-front">
+      <view class="color-picker__camera-front">
         <image
           :style="[{ width: '30px', height: '30px' }]"
           src="/src/assets/svg/camera.svg"
-          class="camera-icon"
+          class="color-picker__camera-icon"
         />
       </view>
     </button>
     <view
-      class="add-button camera-back"
+      class="color-picker__camera-back"
       :style="buttonStyle"
-      :class="{ flipped: cameraFlag }"
+      :class="{ 'color-picker__camera-back--flipped': cameraFlag }"
       @tap.stop="handleCamera"
     >
       <camera
         v-if="cameraVisible"
         devicePosition="front"
-        class="camera-vision"
+        class="color-picker__camera-view"
         @Error="cameraError"
       />
     </view>
 
-    <view :class="['options-box']" :style="buttonStyle">
-      <view class="color-header">
-        <view class="color-input-group">
+    <view class="color-picker__panel" :style="buttonStyle">
+      <view class="color-picker__header">
+        <view class="color-picker__input-group">
           <input
             type="text"
-            class="hex-input"
+            class="color-picker__hex-input"
             readonly
             :value="hexColor"
-            :style="{ color: textColor }"
+            :style="buttonStyle"
           />
           <input
             type="text"
-            class="name-input"
+            class="color-picker__preset-input-name"
             v-model="newPresetName"
             placeholder="预设名称"
             :placeholder-style="`color:${textColor}`"
-            :style="{ color: textColor }"
+            :style="buttonStyle"
           />
           <button
-            class="add-button preset-btn"
+            class="color-picker__add-preset-btn"
             title="添加当前颜色到预设"
             :style="buttonStyle"
             @tap="addPreset"
@@ -372,28 +280,30 @@ useReady(async () => {
         </view>
       </view>
 
-      <view class="preset-container">
-        <view class="preset-box">
+      <view class="color-picker__presets">
+        <view class="color-picker__preset-list">
           <view
             v-for="(item, index) in presetList"
             :key="index"
-            class="preset-item"
+            class="color-picker__preset-item"
             :class="{
-              selected:
+              'color-picker__preset-item--active':
                 item.color === activePreset &&
                 item.brightness === activeData.brightness,
             }"
             @tap="selectPreset(item)"
           >
             <view
-              class="preset-item-color"
+              class="color-picker__preset-color"
               :style="{ backgroundColor: item.color }"
             ></view>
-            <view class="preset-item-name" :style="{ color: textColor }">{{
-              item.name
-            }}</view>
             <view
-              class="delete-button"
+              class="color-picker__preset-name"
+              :style="{ color: textColor }"
+              >{{ item.name }}</view
+            >
+            <view
+              class="color-picker__preset-delete"
               :style="{ color: textColor }"
               @tap.stop="deletePreset(index)"
               >x</view
@@ -402,8 +312,10 @@ useReady(async () => {
         </view>
       </view>
 
-      <view class="control-group">
-        <view class="color-scroll-box">
+      <view class="color-picker__controls">
+        <view
+          class="color-picker__slider-container color-picker__slider-container--color"
+        >
           <slider
             :min="-15"
             :max="365"
@@ -412,14 +324,14 @@ useReady(async () => {
             :value="hueValue"
             trackSize="20"
             activeColor="transparent"
-            class="color-slider slider"
+            class="color-picker__slider color-picker__slider--color"
             @changing="(e) => updateBackgroundColor(e, 'color')"
             @change="(e) => updateBackgroundColor(e, 'color')"
           />
         </view>
 
-        <view class="saturation-scroll-box">
-          <text class="section__title" :style="{ color: textColor }"
+        <view class="color-picker__slider-container">
+          <text class="color-picker__slider-title" :style="{ color: textColor }"
             >饱和度</text
           >
           <slider
@@ -430,28 +342,30 @@ useReady(async () => {
             :value="saturationValue"
             trackSize="20"
             activeColor="transparent"
-            class="saturation-slider slider"
+            class="color-picker__slider color-picker__slider--saturation"
             @changing="(e) => updateBackgroundColor(e, 'saturation')"
             @change="(e) => updateBackgroundColor(e, 'saturation')"
           />
         </view>
 
-        <view class="lightness-scroll-box">
-          <text class="section__title" :style="{ color: textColor }">明度</text>
+        <view class="color-picker__slider-container">
+          <text class="color-picker__slider-title" :style="{ color: textColor }"
+            >明度</text
+          >
           <slider
             :min="-5"
             :max="105"
             :step="1"
             activeColor="transparent"
             :value="lightness"
-            class="lightness-slider slider"
+            class="color-picker__slider color-picker__slider--lightness"
             @changing="(e) => updateBackgroundColor(e, 'lightness')"
             @change="(e) => updateBackgroundColor(e, 'lightness')"
           />
         </view>
 
-        <view class="brightness-scroll-box">
-          <text class="section__title" :style="{ color: textColor }"
+        <view class="color-picker__slider-container">
+          <text class="color-picker__slider-title" :style="{ color: textColor }"
             >显示亮度</text
           >
           <slider
@@ -460,16 +374,16 @@ useReady(async () => {
             :step="1"
             activeColor="transparent"
             :value="brightness"
-            class="brightness-slider slider"
+            class="color-picker__slider color-picker__slider--brightness"
             @changing="updateScreenBrightness"
             @change="updateScreenBrightness"
           />
         </view>
       </view>
     </view>
-    <view class="btn-group">
+    <view class="color-picker__actions">
       <button
-        class="add-button hide-btn"
+        class="color-picker__toggle-btn"
         :style="buttonStyle"
         @tap="handleOptionBoxVisible"
         @longpress="handleLock"
@@ -493,23 +407,19 @@ useReady(async () => {
 </template>
 
 <style lang="scss">
-.color-card {
+.color-picker {
   height: 100vh;
   width: 100vw;
   position: fixed;
   background-size: cover;
-  /*设置了背景图铺满整个容器*/
   background-repeat: no-repeat;
-  /*设置不重复平铺*/
   background-position: center center;
-  /*设置了背景图在容器中的位置为居中*/
   background-attachment: fixed;
-  /* 将背景图固定不动 */
   z-index: -1;
   transition: background-color 0.3s;
   overflow: hidden;
 
-  .add-button {
+  &__btn {
     width: 50px;
     background: rgba(255, 255, 255, 0.2);
     border: none;
@@ -525,10 +435,11 @@ useReady(async () => {
     justify-content: center;
   }
 
-  .camera {
+  &__camera-btn {
+    @extend .color-picker__btn;
     position: fixed;
-    left: 20px;
-    top: 200px;
+    left: 30px;
+    top: 250px;
     width: 150px;
     height: 200px;
     padding: 0;
@@ -537,25 +448,27 @@ useReady(async () => {
     perspective: 1000px;
     transition: all 0.6s;
     opacity: 1;
-    &.flipped {
+
+    &--flipped {
       transform: translateX(-50%) rotateY(180deg);
       left: 50%;
       opacity: 0;
     }
-
-    .camera-front {
-      width: 100%;
-      height: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
   }
 
-  .camera-back {
+  &__camera-front {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  &__camera-back {
+    @extend .color-picker__btn;
     position: fixed;
-    left: 20px;
-    top: 200px;
+    left: 30px;
+    top: 250px;
     width: 150px;
     height: 200px;
     border-radius: 20px;
@@ -566,7 +479,8 @@ useReady(async () => {
     backface-visibility: hidden;
     transform: perspective(1000px) rotateY(-180deg);
     opacity: 0;
-    &.flipped {
+
+    &--flipped {
       transform: translateX(-50%) rotateY(0deg);
       opacity: 1;
       top: 180px;
@@ -574,293 +488,285 @@ useReady(async () => {
       width: 300px;
       height: 300px;
     }
-    .camera-vision {
-      width: 100%;
-      height: 100%;
-    }
   }
 
-  .options-box {
+  &__camera-view {
+    width: 100%;
+    height: 100%;
+  }
+
+  &__panel {
     position: absolute;
     bottom: 200px;
     left: 50%;
     transform: translateX(-50%);
-    // width: 800px;
-    // height: 450px;
-    // padding: 20px;
-    width: 90%; // 改为百分比宽度
-    max-width: 800px; // 保留最大宽度
-    height: auto; // 改为自动高度
-    min-height: 300px; // 添加最小高度
+    width: calc(100% - 120px);
+    height: auto;
+    min-height: 300px;
     padding: 30px;
-
     border-radius: 18px;
     backdrop-filter: blur(8px);
     background-color: rgba(0, 0, 0, 0.37);
     box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
     transition: all 0.3s;
     overflow: hidden;
+  }
 
-    .grayscale-indicator {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: rgba(255, 255, 255, 0.8);
-      font-size: 12px;
-      pointer-events: none;
+  &__grayscale-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    pointer-events: none;
+  }
+
+  &__preset-color {
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.2);
+  }
+
+  &__header {
+    width: 100%;
+  }
+
+  &__input-group {
+    display: flex;
+    width: 100%;
+    gap: 20px;
+    overflow: hidden;
+  }
+
+  &__hex-input {
+    width: 120px;
+    background: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: white;
+    padding: 12px 15px;
+    border-radius: 10px;
+    font-family: monospace;
+    font-size: 24px;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    flex-grow: 0;
+
+    &:focus {
+      outline: none;
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+  }
+
+  &__preset-input-name {
+    flex: 1;
+    min-width: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: white;
+    padding: 12px 15px;
+    border-radius: 10px;
+    font-size: 24px;
+    transition: all 0.2s;
+
+    &:focus {
+      outline: none;
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+  }
+
+  &__add-preset-btn {
+    @extend .color-picker__btn;
+    width: 150px;
+    font-size: 25px;
+    border: none !important;
+  }
+
+  &__presets {
+    overflow-x: auto;
+    margin-top: 20px;
+    margin-bottom: 30px;
+    padding-bottom: 10px;
+
+    &::-webkit-scrollbar {
+      height: 6px;
     }
 
-    .preset-item-color {
-      // 增加对比度边框
-      border: 2px solid rgba(255, 255, 255, 0.3);
-      // 深色背景下的可见性优化
-      box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.2);
+    &::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 3px;
     }
+  }
 
-    .color-header {
-      width: 100%;
+  &__preset-list {
+    margin-top: 25px;
+    display: flex;
+    gap: 20px;
+    min-width: min-content;
+    padding: 0 10px 0 10px;
+  }
 
-      .color-input-group {
-        display: flex;
-        width: 100%;
-        gap: 20px;
-        overflow: hidden;
+  &__preset-item {
+    position: relative;
+    cursor: pointer;
+    transition: transform 0.2s;
+    flex-shrink: 0;
 
-        .hex-input {
-          width: 120px;
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          color: white;
-          padding: 12px 15px;
-          border-radius: 10px;
-          font-family: monospace;
-          font-size: 24px;
-          letter-spacing: 1px;
-          transition: all 0.2s;
-          text-transform: uppercase;
-          flex-shrink: 0;
-          flex-grow: 0;
+    &--active {
+      transform: scale(1.05);
 
-          &:focus {
-            outline: none;
-            border-color: rgba(255, 255, 255, 0.5);
-          }
-        }
+      .color-picker__preset-color {
+        border-color: #00ff88;
+        box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+      }
 
-        .name-input {
-          flex: 1;
-          min-width: 0;
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          color: white;
-          padding: 12px 15px;
-          border-radius: 10px;
-          font-size: 24px;
-          transition: all 0.2s;
+      .color-picker__preset-name {
+        font-weight: bold;
+      }
 
-          &::placeholder {
-            color: rgba(255, 255, 255, 0.6);
-          }
-
-          &:focus {
-            outline: none;
-            border-color: rgba(255, 255, 255, 0.5);
-          }
-        }
-
-        .add-button {
-          width: 150px;
-          font-size: 25px;
-          border: none !important;
-        }
+      .color-picker__preset-delete {
+        display: block;
+        background: #ff0000;
+        pointer-events: all;
       }
     }
+  }
 
-    .preset-container {
-      overflow-x: auto;
-      margin-top: 20px;
-      margin-bottom: 30px;
-      padding-bottom: 10px;
+  &__preset-color {
+    width: 100px;
+    height: 100px;
+    border-radius: 10px;
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    transition: all 0.2s;
+  }
 
-      &::-webkit-scrollbar {
-        height: 6px;
-      }
+  &__preset-name {
+    width: 100px;
+    color: white;
+    text-align: center;
+    font-size: 25px;
+    margin-top: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.2s;
+  }
 
-      &::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.3);
-        border-radius: 3px;
-      }
+  &__preset-delete {
+    display: none;
+    position: absolute;
+    top: -12px;
+    right: -12px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    color: white;
+    font-size: 40px;
+    text-align: center;
+    line-height: 30px;
+    pointer-events: none;
+  }
 
-      .preset-box {
-        margin-top: 25px;
-        display: flex;
-        gap: 20px;
-        min-width: min-content;
-        padding: 0 10px 0 3px;
+  &__controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
 
-        .preset-item {
-          position: relative;
-          cursor: pointer;
-          transition: transform 0.2s;
-          flex-shrink: 0;
+    wx-slider {
+      margin: 0;
+      flex: 1;
+      .wx-slider-handle-wrapper {
+        height: 60px;
+        border-radius: 230px;
 
-          &-color {
-            width: 100px;
-            height: 100px;
-            border-radius: 10px;
-            border: 2px solid rgba(255, 255, 255, 0.5);
-            transition: all 0.2s;
-          }
-
-          &-name {
-            width: 100px;
-            color: white;
-            text-align: center;
-            font-size: 25px;
-            margin-top: 8px;
-            // 溢出省略号
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            transition: color 0.2s;
-          }
-
-          .delete-button {
-            display: none;
-            position: absolute;
-            top: -12px;
-            right: -12px;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            color: white;
-            font-size: 40px;
-            text-align: center;
-            line-height: 30px;
-            pointer-events: none;
-          }
-
-          &.selected {
-            transform: scale(1.05);
-
-            .preset-item-color {
-              border-color: #00ff88;
-              box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
-            }
-
-            .preset-item-name {
-              color: #00ff88;
-              font-weight: bold;
-            }
-
-            .delete-button {
-              display: block;
-              background: #ff0000;
-              pointer-events: all;
-            }
-          }
-        }
-      }
-    }
-
-    .control-group {
-      display: flex;
-      flex-direction: column;
-      gap: 15px;
-
-      wx-slider {
-        margin: 0;
-        flex: 1;
-        .wx-slider-handle-wrapper {
-          height: 60px;
-          border-radius: 230px;
-
-          .wx-slider-track {
-            border-radius: 30px;
-          }
-        }
-
-        &.color-slider {
-          .wx-slider-handle-wrapper {
-            background: linear-gradient(
-              to right,
-              hsl(0, 100%, 50%) 0%,
-              hsl(30, 100%, 50%) 12%,
-              hsl(120, 100%, 50%) 33%,
-              hsl(240, 100%, 50%) 66%,
-              hsl(360, 100%, 50%) 100%
-            ) !important;
-          }
-        }
-
-        &.saturation-slider {
-          .wx-slider-handle-wrapper {
-            background: linear-gradient(
-              to right,
-              hsl(var(--hue), 0%, 50%),
-              hsl(var(--hue), 100%, 50%)
-            );
-          }
-        }
-
-        &.lightness-slider {
-          .wx-slider-handle-wrapper {
-            background: linear-gradient(
-              to right,
-              hsl(var(--hue), 100%, 0%),
-              hsl(var(--hue), 100%, 100%)
-            );
-          }
-        }
-
-        &.brightness-slider {
-          .wx-slider-handle-wrapper {
-            background: linear-gradient(to right, #000000 0%, #ffffff 100%);
-          }
-        }
-      }
-
-      .color-scroll-box {
-        position: relative;
-
-        .color-slider {
-          z-index: 11;
-          position: relative;
-        }
-
-        .color-bar {
-          overflow: hidden;
-          border-radius: 40px;
-          position: absolute;
-          top: 0px;
-          left: 0;
-          width: 100%;
-          height: 80px;
-          pointer-events: none;
-          z-index: 1;
-          background: linear-gradient(
-            to right,
-            #ff0000,
-            #ffa500,
-            #00ff00,
-            #0000ff,
-            #ff0000
-          ); // background-color: #fff;
-        }
-      }
-      [class$="-scroll-box"] {
-        display: flex;
-        align-items: center;
-        gap: 20px;
-        .section__title {
-          width: 140px;
+        .wx-slider-track {
+          border-radius: 30px;
         }
       }
     }
   }
 
-  .btn-group {
+  &__slider {
+    &--color {
+      .wx-slider-handle-wrapper {
+        background: linear-gradient(
+          to right,
+          hsl(0, 100%, 50%) 0%,
+          hsl(30, 100%, 50%) 12%,
+          hsl(120, 100%, 50%) 33%,
+          hsl(240, 100%, 50%) 66%,
+          hsl(360, 100%, 50%) 100%
+        ) !important;
+      }
+    }
+
+    &--saturation {
+      .wx-slider-handle-wrapper {
+        background: linear-gradient(
+          to right,
+          hsl(var(--hue), 0%, 50%),
+          hsl(var(--hue), 100%, 50%)
+        );
+      }
+    }
+
+    &--lightness {
+      .wx-slider-handle-wrapper {
+        background: linear-gradient(
+          to right,
+          hsl(var(--hue), 100%, 0%),
+          hsl(var(--hue), 100%, 100%)
+        );
+      }
+    }
+
+    &--brightness {
+      .wx-slider-handle-wrapper {
+        background: linear-gradient(to right, #000000 0%, #ffffff 100%);
+      }
+    }
+  }
+
+  &__slider-container {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: relative;
+
+    &--color {
+      .color-picker__slider {
+        z-index: 11;
+        position: relative;
+      }
+    }
+  }
+
+  &__slider-title {
+    width: 140px;
+  }
+
+  &__color-bar {
+    overflow: hidden;
+    border-radius: 40px;
+    position: absolute;
+    top: 0px;
+    left: 0;
+    width: 100%;
+    height: 80px;
+    pointer-events: none;
+    z-index: 1;
+    background: linear-gradient(
+      to right,
+      #ff0000,
+      #ffa500,
+      #00ff00,
+      #0000ff,
+      #ff0000
+    );
+  }
+
+  &__actions {
     position: fixed;
     bottom: 100px;
     left: 50%;
@@ -868,38 +774,33 @@ useReady(async () => {
     margin-top: 25px;
     display: flex;
     justify-content: center;
+  }
 
-    .add-button {
-      width: unset;
-      height: unset;
-      padding: 20px 20px;
-      font-size: 40px;
-      line-height: 40px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+  &__toggle-btn {
+    @extend .color-picker__btn;
+    width: unset;
+    height: unset;
+    padding: 20px 20px;
+    font-size: 40px;
+    line-height: 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  &--hidden {
+    .color-picker__panel {
+      min-height: 0;
+      height: 0;
+      opacity: 0;
+      bottom: 0;
+      pointer-events: none;
+      overflow: hidden;
     }
-  }
-}
 
-.color-card.hidden {
-  .options-box {
-    min-height: 0;
-    height: 0;
-    opacity: 0;
-    bottom: 0;
-    pointer-events: none;
-    overflow: hidden;
-
-    // .color-header,
-    // .preset-container,
-    // .control-group {
-    //   display: none;
-    // }
-  }
-
-  .add-button {
-    background: rgba(0, 0, 0, 0.4);
+    .color-picker__btn {
+      background: rgba(0, 0, 0, 0.4);
+    }
   }
 }
 </style>
