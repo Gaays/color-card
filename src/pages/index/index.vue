@@ -2,7 +2,12 @@
 import { ref, computed } from "vue";
 import { useReady } from "@tarojs/taro";
 import Taro from "@tarojs/taro";
-import { hslToHex, getTextColor, getButtonStyle } from "../../utils/color";
+import {
+  hslToHex,
+  getTextColor,
+  getButtonStyle,
+  hexToHsl,
+} from "../../utils/color";
 import { useColorPreset } from "../../composables/useColorPreset";
 import type { ColorPreset } from "../../types/color";
 
@@ -42,6 +47,29 @@ const lightness = ref(100);
 const brightness = ref(50);
 const hidden = ref(false);
 const lock = ref(false);
+
+const handleHexInput = () => {
+  newPresetName.value = "";
+};
+
+const handleHexInputConfirm = (event: Event) => {
+  const input = (event.target as HTMLInputElement).value;
+  if (!input) return;
+
+  const hslColor = hexToHsl(input);
+  if (hslColor) {
+    hueValue.value = hslColor.h;
+    saturationValue.value = hslColor.s;
+    lightness.value = hslColor.l;
+    updateBackgroundColor();
+  } else {
+    Taro.showToast({
+      title: "颜色格式有误",
+      icon: "none",
+      duration: 2000,
+    });
+  }
+};
 
 const handleOptionBoxVisible = () => {
   if (!lock.value) {
@@ -254,13 +282,21 @@ useReady(async () => {
     <view class="color-picker__panel" :style="buttonStyle">
       <view class="color-picker__header">
         <view class="color-picker__input-group">
-          <input
-            type="text"
-            class="color-picker__hex-input"
-            readonly
-            :value="hexColor"
-            :style="buttonStyle"
-          />
+          <view class="color-picker__hex-input-container" :style="buttonStyle">
+            <text class="color-picker__hex-prefix" :style="textColor">#</text>
+            <input
+              type="text"
+              class="color-picker__hex-input"
+              :value="hexColor.slice(1)"
+              :style="textColor"
+              confirm-type="done"
+              placeholder="颜色值"
+              :placeholder-style="`color:${textColor}`"
+              @input="handleHexInput"
+              @confirm="handleHexInputConfirm"
+              @blur="handleHexInputConfirm"
+            />
+          </view>
           <input
             type="text"
             class="color-picker__preset-input-name"
@@ -538,20 +574,38 @@ useReady(async () => {
     overflow: hidden;
   }
 
-  &__hex-input {
+  &__hex-input-container {
+    display: flex;
+    align-items: center;
     width: 120px;
     background: rgba(255, 255, 255, 0.3);
     border: 1px solid rgba(255, 255, 255, 0.4);
-    color: white;
-    padding: 12px 15px;
     border-radius: 10px;
+    padding: 12px 15px;
+    flex-shrink: 0;
+    flex-grow: 0;
+    transition: all 0.2s;
+
+    &:focus-within {
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+  }
+
+  &__hex-prefix {
+    font-family: monospace;
+    font-size: 24px;
+    margin-right: 2px;
+  }
+
+  &__hex-input {
+    width: calc(100% - 15px);
+    border: none;
+    background: transparent;
+    border: none;
     font-family: monospace;
     font-size: 24px;
     letter-spacing: 1px;
-    transition: all 0.2s;
     text-transform: uppercase;
-    flex-shrink: 0;
-    flex-grow: 0;
 
     &:focus {
       outline: none;
