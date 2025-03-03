@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { useReady } from "@tarojs/taro";
+import { useReady, useDidHide } from "@tarojs/taro";
 import Taro from "@tarojs/taro";
 import {
   hslToHex,
@@ -8,21 +8,13 @@ import {
   getButtonStyle,
   hexToHsl,
 } from "../../utils/color";
+import { throttle } from "../../utils/index";
+import { useFunction } from "../../api/useFunction";
 import { useColorPreset } from "../../composables/useColorPreset";
 import { useWindowResize } from "../../composables/useWindowResize";
 import type { ColorPreset } from "../../types/color";
 
-// 节流函数
-function throttle(fn: Function, delay: number) {
-  let lastTime = 0;
-  return function (...args: any[]) {
-    const now = Date.now();
-    if (now - lastTime >= delay) {
-      fn.apply(this, args);
-      lastTime = now;
-    }
-  };
-}
+const { uploadUseInfo } = useFunction();
 
 const {
   presetList,
@@ -247,6 +239,10 @@ useReady(async () => {
   loadPresets();
   selectPreset(presetList.value[0], true);
 });
+
+useDidHide(() => {
+  uploadUseInfo({ data: 123 });
+});
 </script>
 
 <template>
@@ -357,8 +353,8 @@ useReady(async () => {
               class="color-picker__preset-delete"
               :style="{ color: textColor }"
               @tap.stop="deletePreset(index)"
-              >x</view
-            >
+              >x
+            </view>
           </view>
         </view>
       </view>
