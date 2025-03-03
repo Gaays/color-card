@@ -1,6 +1,8 @@
 import { ref } from "vue";
 import Taro from "@tarojs/taro";
 import type { ColorPreset } from "../types/color";
+import { useFunction } from "../api/useFunction";
+const { getUserPreset } = useFunction();
 
 export function useColorPreset() {
   const presetList = ref<ColorPreset[]>([
@@ -46,19 +48,15 @@ export function useColorPreset() {
     },
   ]);
 
-  const loadPresets = () => {
-    const saved = Taro.getStorageSync("colorPresets");
+  const loadPresets = async () => {
+    const saved = await getUserPreset()
     if (saved) {
       try {
-        presetList.value = JSON.parse(saved);
+        presetList.value = saved;
       } catch (e) {
         console.error("Failed to load presets:", e);
       }
     }
-  };
-
-  const savePresets = () => {
-    Taro.setStorageSync("colorPresets", JSON.stringify(presetList.value));
   };
 
   const addPreset = (newPreset: ColorPreset) => {
@@ -79,7 +77,6 @@ export function useColorPreset() {
     }
 
     presetList.value.push(newPreset);
-    savePresets();
     Taro.vibrateShort({ type: "light" });
     return true;
   };
@@ -95,13 +92,11 @@ export function useColorPreset() {
       return
     };
     presetList.value.splice(index, 1);
-    savePresets();
   };
 
   return {
     presetList,
     loadPresets,
-    savePresets,
     addPreset,
     deletePreset,
   };

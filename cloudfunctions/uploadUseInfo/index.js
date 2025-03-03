@@ -3,11 +3,34 @@ const cloud = require('wx-server-sdk')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV }) // 使用当前云环境
 
+const addData = async (db, data) => {
+  try {
+    db.add({ data })
+    console.log('新增数据成功')
+  } catch (e) {
+    console.log(e)
+  }
+}
+
 // 云函数入口函数
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
-  console.log('🚀 ~ exports.main= ~ wxContext:', wxContext);
-  console.log(event, context)
+  const db = cloud.database({
+    throwOnNotFound: false
+  })
+
+  // 用户行为保存
+  const useInfoDB = db.collection('UseInfo')
+  const useInfoData = {
+    userId: wxContext.OPENID,
+    cameraCount: event.cameraCount,
+    lockCount: event.lockCount,
+    hideCount: event.hideCount,
+    time: event.time,
+    currentColor: event.currentColor,
+  }
+  addData(useInfoDB, useInfoData)
+
   return {
     event,
     openid: wxContext.OPENID,

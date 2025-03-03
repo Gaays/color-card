@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { useReady, useDidHide } from "@tarojs/taro";
+import { useReady, useDidShow, useDidHide } from "@tarojs/taro";
 import Taro from "@tarojs/taro";
 import {
   hslToHex,
@@ -8,13 +8,13 @@ import {
   getButtonStyle,
   hexToHsl,
 } from "../../utils/color";
-import { throttle } from "../../utils/index";
+import { throttle, useTimeCount, useBtnCount } from "../../utils/index";
 import { useFunction } from "../../api/useFunction";
 import { useColorPreset } from "../../composables/useColorPreset";
 import { useWindowResize } from "../../composables/useWindowResize";
 import type { ColorPreset } from "../../types/color";
 
-const { uploadUseInfo } = useFunction();
+const { uploadUseInfo, getUserPreset, uploadPreset } = useFunction();
 
 const {
   presetList,
@@ -22,6 +22,11 @@ const {
   addPreset: addPresetToList,
   deletePreset,
 } = useColorPreset();
+
+const { initTime, getTime } = useTimeCount();
+let cameraCount = useBtnCount();
+let lockCount = useBtnCount();
+let hideCount = useBtnCount();
 
 const newPresetName = ref("");
 const activePreset = ref("");
@@ -66,6 +71,7 @@ const handleHexInputConfirm = (event: Event) => {
 
 const handleOptionBoxVisible = () => {
   if (!lock.value) {
+    hideCount.addCount();
     hidden.value = !hidden.value;
     Taro.vibrateShort({ type: "light" });
   } else {
@@ -82,6 +88,7 @@ const handleLock = () => {
   lock.value = !lock.value;
   Taro.vibrateShort({ type: "heavy" });
   if (lock.value) {
+    lockCount.addCount();
     Taro.showToast({
       title: "已锁定",
       icon: "none",
@@ -171,6 +178,14 @@ const selectPreset = (preset: ColorPreset, silent = false) => {
 };
 
 const addPreset = () => {
+  if (presetList.value.length >= 15) {
+    Taro.showToast({
+      title: "预设最多为15个",
+      icon: "none",
+      duration: 2000,
+    });
+    return;
+  }
   const newPreset: ColorPreset = {
     name: newPresetName.value || `预设${presetList.value.length + 1}`,
     color: backgroundColor.value,
@@ -203,6 +218,7 @@ const handleCamera = () => {
       cameraVisible.value = false;
     }, 600);
   } else {
+    cameraCount.addCount();
     setTimeout(() => {
       cameraVisible.value = true;
     }, 500);
@@ -232,16 +248,60 @@ const cameraError = () => {
 
 const { init: initWindowResize, screenOrientation } = useWindowResize();
 
-useReady(async () => {
+const initialPresetList = ref<ColorPreset[]>([]);
+
+const initCount = () => {
+  cameraCount.initCount();
+  lockCount.initCount();
+  hideCount.initCount();
+};
+
+useReady(async () => {});
+
+useDidShow(async () => {
   initWindowResize();
+  initTime();
+  initCount();
   const systemBrightness = await Taro.getScreenBrightness();
   brightness.value = systemBrightness.value;
   loadPresets();
+  initialPresetList.value = JSON.parse(JSON.stringify(presetList.value));
   selectPreset(presetList.value[0], true);
 });
 
 useDidHide(() => {
-  uploadUseInfo({ data: 123 });
+  const userUseTime = getTime();
+  const uploadData = {
+    useTime: userUseTime,
+    preset: presetList.value,
+    cameraCount: cameraCount.count.value,
+    lockCount: lockCount.count.value,
+    hideCount: hideCount.count.value,
+    currentColor: activePreset.value,
+  };
+
+  // 检查presetList是否发生变化
+  const isPresetChanged =
+    JSON.stringify(presetList.value) !==
+    JSON.stringify(initialPresetList.value);
+  if (isPresetChanged) {
+    uploadPreset(uploadData);
+  }
+
+  // 超过1分钟或超过6次按钮点击算有效使用
+  const validTime = 1 * 60 * 1000;
+  if (userUseTime >= validTime) {
+    uploadUseInfo(uploadData);
+  } else {
+    const useCount = 6;
+    if (
+      uploadData.cameraCount >= useCount ||
+      uploadData.lockCount >= useCount ||
+      uploadData.hideCount >= useCount
+    ) {
+      uploadUseInfo(uploadData);
+    }
+  }
 });
 </script>
 
