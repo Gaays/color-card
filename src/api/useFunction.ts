@@ -10,10 +10,6 @@ export const useFunction = () => {
     Taro.cloud.callFunction({
       name: 'uploadUseInfo',
       data: data
-    }).then(res => {
-      console.log('success', res)
-    }).catch(err => {
-      console.log('err', err)
     })
   }
 
@@ -24,10 +20,10 @@ export const useFunction = () => {
       const res = await Taro.cloud.callFunction({
         name: 'loadPreset'
       })
-      preset = res.result.preset
+      preset = res?.result?.preset || []
       return preset
-    } catch (err) {
-      console.log('err', err)
+    } catch (e) {
+      console.log('err', e)
       return preset
     }
   }
@@ -36,10 +32,6 @@ export const useFunction = () => {
     Taro.cloud.callFunction({
       name: 'uploadPreset',
       data: data
-    }).then(res => {
-      console.log('success', res)
-    }).catch(err => {
-      console.log('err', err)
     })
   }
 

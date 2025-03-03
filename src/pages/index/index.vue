@@ -14,7 +14,7 @@ import { useColorPreset } from "../../composables/useColorPreset";
 import { useWindowResize } from "../../composables/useWindowResize";
 import type { ColorPreset } from "../../types/color";
 
-const { uploadUseInfo, getUserPreset, uploadPreset } = useFunction();
+const { uploadUseInfo, uploadPreset } = useFunction();
 
 const {
   presetList,

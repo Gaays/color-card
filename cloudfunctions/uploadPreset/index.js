@@ -1,5 +1,6 @@
 // 云函数入口文件
 const cloud = require('wx-server-sdk')
+const cloudId = 'cloud1-3grval4ke5e8b6cf'
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV }) // 使用当前云环境
 
@@ -13,11 +14,9 @@ const insertData = async (db, uniKey, uniValue, data) => {
       db.where({
         [uniKey]: uniValue
       }).update({ data })
-      console.log('更新数据成功')
     } else {
       // db中无数据，直接插入
       db.add({ data })
-      console.log('新增数据成功')
     }
   } catch (e) {
     console.log(e)
@@ -27,6 +26,11 @@ const insertData = async (db, uniKey, uniValue, data) => {
 // 云函数入口函数
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
+
+  const db = cloud.database({
+    env: cloudId,
+    throwOnNotFound: false
+  })
 
   // 用户预设保存
   const userPresetDB = db.collection('UserPreset')

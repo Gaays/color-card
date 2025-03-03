@@ -1,25 +1,25 @@
 // 云函数入口文件
 const cloud = require('wx-server-sdk')
+const cloudId = 'cloud1-3grval4ke5e8b6cf'
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV }) // 使用当前云环境
 
 const addData = async (db, data) => {
   try {
     db.add({ data })
-    console.log('新增数据成功')
   } catch (e) {
     console.log(e)
   }
 }
 
-// 云函数入口函数
+// 用户行为保存
 exports.main = async (event, context) => {
   const wxContext = cloud.getWXContext()
   const db = cloud.database({
+    env: cloudId,
     throwOnNotFound: false
   })
 
-  // 用户行为保存
   const useInfoDB = db.collection('UseInfo')
   const useInfoData = {
     userId: wxContext.OPENID,

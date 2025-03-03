@@ -38,7 +38,6 @@ export const useBtnCount = () => {
 
   const addCount = () => {
     count.value++
-    console.log(count.value)
   }
 
   return {
