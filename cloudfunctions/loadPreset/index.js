@@ -1,6 +1,6 @@
 // 云函数入口文件
 const cloud = require('wx-server-sdk')
-const cloudId = 'cloud1-3grval4ke5e8b6cf'
+const { cloudId } = require('../../config/cloud.config')
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV }) // 使用当前云环境
 
