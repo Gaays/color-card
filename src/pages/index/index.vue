@@ -234,11 +234,19 @@ const cameraError = () => {
 
   Taro.getSetting({
     success: function (res) {
+      console.log('🚀 ~ cameraError ~ res:', res);
       if (!res.authSetting["scope.camera"]) {
         Taro.authorize({
           scope: "scope.camera",
           success: function () {
             Taro.createCameraContext();
+          },
+          fail: function () {
+            Taro.showToast({
+              title: "未授权摄像头权限，请前往小程序设置授权。",
+              icon: "none",
+              duration: 2000,
+            });
           },
         });
       }

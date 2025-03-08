@@ -11,5 +11,10 @@ export default defineAppConfig({
     navigationBarTitleText: '光影色卡',
     navigationBarTextStyle: 'black'
   },
-  resizable: true
+  resizable: true,
+  permission: {
+    "scope.camera": {
+      "desc": "您的摄像头权限将用于预览拍摄画面"
+    }
+  }
 })
