@@ -3,6 +3,7 @@ import Taro from "@tarojs/taro";
 export const useFunction = () => {
   const PRESET_STORAGE_KEY = 'color_preset';
   const USER_INFO_STORAGE_KEY = 'user_info';
+  const CURRENT_COLOR_STORAGE_KEY = 'current_color';
 
   const init = () => {
     Taro.cloud.init()
@@ -54,10 +55,33 @@ export const useFunction = () => {
     }
   }
 
+  const saveCurrentColor = (preset: Object) => {
+    Taro.setStorageSync(CURRENT_COLOR_STORAGE_KEY, JSON.stringify(preset))
+  }
+
+  const getCurrentColor = () => {
+    const defaultPreset = {
+      name: "晨曦粉",
+      color: "hsl(350, 70%, 85%)",
+      hue: 350,
+      saturation: 70,
+      lightness: 85,
+      brightness: 50,
+    }
+    const currentPreset = Taro.getStorageSync(CURRENT_COLOR_STORAGE_KEY)
+    if (currentPreset) {
+      return JSON.parse(currentPreset)
+    } else {
+      return defaultPreset
+    }
+  }
+
   return {
     init,
     uploadUseInfo,
     uploadPreset,
-    getUserPreset
+    getUserPreset,
+    saveCurrentColor,
+    getCurrentColor
   }
 }

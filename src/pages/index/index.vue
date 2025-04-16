@@ -14,7 +14,8 @@ import { useColorPreset } from "../../composables/useColorPreset";
 import { useWindowResize } from "../../composables/useWindowResize";
 import type { ColorPreset } from "../../types/color";
 
-const { uploadUseInfo, uploadPreset } = useFunction();
+const { uploadUseInfo, uploadPreset, saveCurrentColor, getCurrentColor } =
+  useFunction();
 
 const {
   presetList,
@@ -50,7 +51,20 @@ const handleHexInput = () => {
   newPresetName.value = "";
 };
 
+const showLockMessage = () => {
+  Taro.showToast({
+    title: "已锁定，请长按解锁",
+    icon: "none",
+    duration: 2000,
+  });
+  Taro.vibrateShort({ type: "medium" });
+};
+
 const handleHexInputConfirm = (event: Event) => {
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
   const input = (event.target as HTMLInputElement).value;
   if (!input) return;
 
@@ -75,12 +89,7 @@ const handleOptionBoxVisible = () => {
     hidden.value = !hidden.value;
     Taro.vibrateShort({ type: "light" });
   } else {
-    Taro.showToast({
-      title: "已锁定，请长按解锁",
-      icon: "none",
-      duration: 2000,
-    });
-    Taro.vibrateShort({ type: "medium" });
+    showLockMessage();
   }
 };
 
@@ -129,6 +138,10 @@ const buttonStyle = computed(() => {
 });
 
 const updateBackgroundColor = throttle((event?: Event, type?: string) => {
+  if (event && lock.value) {
+    showLockMessage();
+    return;
+  }
   if (event) {
     activePreset.value = "";
     newPresetName.value = "";
@@ -154,6 +167,10 @@ const updateBackgroundColor = throttle((event?: Event, type?: string) => {
 
 // 修改屏幕亮度
 const updateScreenBrightness = throttle((event: Event) => {
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
   const selectValue = event.detail.value;
   const value = selectValue < 0 ? 0 : selectValue > 100 ? 100 : selectValue;
   brightness.value = value;
@@ -161,6 +178,10 @@ const updateScreenBrightness = throttle((event: Event) => {
 }, 16);
 
 const selectPreset = (preset: ColorPreset, silent = false) => {
+  if (lock.value && !silent) {
+    showLockMessage();
+    return;
+  }
   activeData.value = preset;
   hueValue.value = preset.hue;
   lightness.value = preset.lightness;
@@ -178,6 +199,10 @@ const selectPreset = (preset: ColorPreset, silent = false) => {
 };
 
 const addPreset = () => {
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
   if (presetList.value.length >= 15) {
     Taro.showToast({
       title: "预设最多为15个",
@@ -210,6 +235,10 @@ const gradientStyle = computed(() => ({
 const cameraFlag = ref(false);
 const cameraVisible = ref(false);
 const handleCamera = () => {
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
   cameraFlag.value = !cameraFlag.value;
   Taro.vibrateShort({ type: "light" });
 
@@ -234,7 +263,6 @@ const cameraError = () => {
 
   Taro.getSetting({
     success: function (res) {
-      console.log('🚀 ~ cameraError ~ res:', res);
       if (!res.authSetting["scope.camera"]) {
         Taro.authorize({
           scope: "scope.camera",
@@ -274,10 +302,16 @@ useDidShow(async () => {
   brightness.value = systemBrightness.value;
   loadPresets();
   initialPresetList.value = JSON.parse(JSON.stringify(presetList.value));
-  selectPreset(presetList.value[0], true);
+
+  // 读取本地保存的颜色
+  const currentColor = getCurrentColor();
+  selectPreset(currentColor, true);
 });
 
 useDidHide(() => {
+  // 保存当前选中颜色到本地
+  saveCurrentColor(activeData.value);
+  // 保存预设数据和用户使用时间
   const userUseTime = getTime();
   const uploadData = {
     useTime: userUseTime,
@@ -328,6 +362,7 @@ useDidHide(() => {
       class="color-picker__camera-btn"
       :class="{ 'color-picker__camera-btn--flipped': cameraFlag }"
       @tap="handleCamera"
+      :disabled="lock"
     >
       <view class="color-picker__camera-front">
         <image
@@ -374,6 +409,7 @@ useDidHide(() => {
               @input="handleHexInput"
               @confirm="handleHexInputConfirm"
               @blur="handleHexInputConfirm"
+              :disabled="lock"
             />
           </view>
           <input
@@ -383,12 +419,14 @@ useDidHide(() => {
             placeholder="预设名称"
             :placeholder-style="`color:${textColor}`"
             :style="buttonStyle"
+            :disabled="lock"
           />
           <button
             class="color-picker__add-preset-btn"
             title="添加当前颜色到预设"
             :style="buttonStyle"
             @tap="addPreset"
+            :disabled="lock"
           >
             添加到预设
           </button>
@@ -420,7 +458,8 @@ useDidHide(() => {
             <view
               class="color-picker__preset-delete"
               :style="{ color: textColor }"
-              @tap.stop="deletePreset(index)"
+              @tap.stop="lock ? showLockMessage() : deletePreset(index)"
+              :class="{ 'disabled': lock }"
               >x
             </view>
           </view>
@@ -442,6 +481,7 @@ useDidHide(() => {
             class="color-picker__slider color-picker__slider--color"
             @changing="(e) => updateBackgroundColor(e, 'color')"
             @change="(e) => updateBackgroundColor(e, 'color')"
+            :disabled="lock"
           />
         </view>
 
@@ -509,8 +549,8 @@ useDidHide(() => {
             {
               fill: textColor,
               color: textColor,
-              width: '30px',
-              height: '30px',
+              width: '20px',
+              height: '20px',
             },
           ]"
           src="/src/assets/svg/lock.svg"
