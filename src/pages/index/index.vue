@@ -6,6 +6,8 @@ import {
   hslToHex,
   getTextColor,
   getButtonStyle,
+  getPanelTextColor,
+  getPanelBorderColor,
   hexToHsl,
 } from "../../utils/color";
 import { throttle, useTimeCount, useBtnCount } from "../../utils/index";
@@ -22,6 +24,7 @@ const {
   loadPresets,
   addPreset: addPresetToList,
   deletePreset,
+  reorderPreset,
 } = useColorPreset();
 
 const { initTime, getTime } = useTimeCount();
@@ -44,8 +47,95 @@ const hueValue = ref(0);
 const saturationValue = ref(100);
 const lightness = ref(100);
 const brightness = ref(50);
-const hidden = ref(false);
+const panelVisible = ref(true);
 const lock = ref(false);
+
+// 拖拽排序状态
+const isDragging = ref(false);
+const draggingOrigIdx = ref<number | null>(null);
+const dragOverIdx = ref<number | null>(null);
+const dragStartX = ref(0);
+const ITEM_SLOT_WIDTH = 92; // 76px circle + 16px gap
+
+const displayPresets = computed(() => {
+  const list = presetList.value.map((item, i) => ({ item, origIdx: i }));
+  if (
+    !isDragging.value ||
+    draggingOrigIdx.value === null ||
+    dragOverIdx.value === null ||
+    draggingOrigIdx.value === dragOverIdx.value
+  ) {
+    return list;
+  }
+  const result = [...list];
+  const [dragged] = result.splice(draggingOrigIdx.value, 1);
+  result.splice(dragOverIdx.value, 0, dragged);
+  return result;
+});
+
+const startDrag = (origIdx: number, event: any) => {
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
+  Taro.vibrateShort({ type: "heavy" });
+  isDragging.value = true;
+  draggingOrigIdx.value = origIdx;
+  dragOverIdx.value = origIdx;
+  dragStartX.value = event.touches[0].clientX;
+};
+
+const onListTouchMove = (event: any) => {
+  if (!isDragging.value || draggingOrigIdx.value === null) return;
+  const delta = event.touches[0].clientX - dragStartX.value;
+  const deltaSlots = Math.round(delta / ITEM_SLOT_WIDTH);
+  dragOverIdx.value = Math.max(
+    0,
+    Math.min(presetList.value.length - 1, draggingOrigIdx.value + deltaSlots)
+  );
+};
+
+const endDrag = () => {
+  if (
+    isDragging.value &&
+    draggingOrigIdx.value !== null &&
+    dragOverIdx.value !== null &&
+    draggingOrigIdx.value !== dragOverIdx.value
+  ) {
+    reorderPreset(draggingOrigIdx.value, dragOverIdx.value);
+  }
+  isDragging.value = false;
+  draggingOrigIdx.value = null;
+  dragOverIdx.value = null;
+  dragStartX.value = 0;
+};
+
+const handlePresetTap = (item: ColorPreset) => {
+  if (isDragging.value) return;
+  selectPreset(item);
+};
+
+const handlePresetDelete = (origIdx: number) => {
+  if (isDragging.value) return;
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
+  deletePreset(origIdx);
+};
+
+const handleScreenTap = () => {
+  if (panelVisible.value) {
+    panelVisible.value = false;
+    hideCount.addCount();
+  } else {
+    panelVisible.value = true;
+    hideCount.addCount();
+    if (lock.value) {
+      showLockMessage();
+    }
+  }
+};
 
 const handleHexInput = () => {
   newPresetName.value = "";
@@ -83,36 +173,17 @@ const handleHexInputConfirm = (event: Event) => {
   }
 };
 
-const handleOptionBoxVisible = () => {
-  if (!lock.value) {
-    hideCount.addCount();
-    hidden.value = !hidden.value;
-    Taro.vibrateShort({ type: "light" });
-  } else {
-    showLockMessage();
-  }
-};
-
 const handleLock = () => {
   lock.value = !lock.value;
   Taro.vibrateShort({ type: "heavy" });
   if (lock.value) {
     lockCount.addCount();
-    Taro.showToast({
-      title: "已锁定",
-      icon: "none",
-      duration: 2000,
-    });
+    Taro.showToast({ title: "已锁定", icon: "none", duration: 2000 });
   } else {
-    Taro.showToast({
-      title: "已解锁",
-      icon: "none",
-      duration: 2000,
-    });
+    Taro.showToast({ title: "已解锁", icon: "none", duration: 2000 });
   }
 };
 
-// 修改后的HEX计算逻辑
 const parsedHSL = computed(() => {
   const matches = backgroundColor.value.match(
     /hsl\((\d+),\s*(\d+)%,\s*(\d+)%/i
@@ -135,6 +206,31 @@ const textColor = computed(() => {
 const buttonStyle = computed(() => {
   const [h, s, l] = parsedHSL.value;
   return getButtonStyle(h, s, l, textColor.value);
+});
+
+// 面板内专用：文字颜色（已计算遮罩层混合亮度）
+const panelTextColor = computed(() => {
+  const [h, s, l] = parsedHSL.value;
+  return getPanelTextColor(h, s, l);
+});
+
+// 面板内专用：输入框/按钮样式
+const panelButtonStyle = computed(() => {
+  const [h, s, l] = parsedHSL.value;
+  return {
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    color: panelTextColor.value,
+    border: `1px solid ${getPanelBorderColor(h, s, l)}`,
+  };
+});
+
+// 激活预设的圆圈边框样式（高对比度双环）
+const activePresetRingStyle = computed(() => {
+  const [h, s, l] = parsedHSL.value;
+  const ringColor = getPanelTextColor(h, s, l);
+  return {
+    boxShadow: `0 0 0 2.5px ${ringColor}, 0 0 0 4.5px rgba(128,128,128,0.25)`,
+  };
 });
 
 const updateBackgroundColor = throttle((event?: Event, type?: string) => {
@@ -165,7 +261,6 @@ const updateBackgroundColor = throttle((event?: Event, type?: string) => {
   backgroundColor.value = `hsl(${hueValue.value}, ${saturationValue.value}%, ${lightness.value}%)`;
 }, 16);
 
-// 修改屏幕亮度
 const updateScreenBrightness = throttle((event: Event) => {
   if (lock.value) {
     showLockMessage();
@@ -303,15 +398,12 @@ useDidShow(async () => {
   loadPresets();
   initialPresetList.value = JSON.parse(JSON.stringify(presetList.value));
 
-  // 读取本地保存的颜色
   const currentColor = getCurrentColor();
   selectPreset(currentColor, true);
 });
 
 useDidHide(() => {
-  // 保存当前选中颜色到本地
   saveCurrentColor(activeData.value);
-  // 保存预设数据和用户使用时间
   const userUseTime = getTime();
   const uploadData = {
     useTime: userUseTime,
@@ -322,7 +414,6 @@ useDidHide(() => {
     currentColor: activePreset.value,
   };
 
-  // 检查presetList是否发生变化
   const isPresetChanged =
     JSON.stringify(presetList.value) !==
     JSON.stringify(initialPresetList.value);
@@ -330,7 +421,6 @@ useDidHide(() => {
     uploadPreset(uploadData);
   }
 
-  // 超过1分钟或超过6次按钮点击算有效使用
   const validTime = 1 * 60 * 1000;
   if (userUseTime >= validTime) {
     uploadUseInfo(uploadData);
@@ -349,31 +439,22 @@ useDidHide(() => {
 
 <template>
   <view
-    :class="[
-      'color-picker',
-      { 'color-picker--hidden': hidden },
-      screenOrientation,
-    ]"
+    :class="['color-picker', screenOrientation]"
     :style="[{ 'background-color': backgroundColor }, gradientStyle]"
+    @tap="handleScreenTap"
   >
+    <!-- 摄像头按钮 - 右上角 -->
     <button
       title="摄像头"
       :style="buttonStyle"
       class="color-picker__camera-btn"
       :class="{ 'color-picker__camera-btn--flipped': cameraFlag }"
-      @tap="handleCamera"
+      @tap.stop="handleCamera"
       :disabled="lock"
     >
       <view class="color-picker__camera-front">
         <image
-          :style="[
-            {
-              width: '30px',
-              height: '30px',
-              fill: textColor,
-              color: textColor,
-            },
-          ]"
+          :style="{ width: '32px', height: '32px', fill: textColor, color: textColor }"
           src="/src/assets/svg/camera.svg"
           class="color-picker__camera-icon"
         />
@@ -381,7 +462,6 @@ useDidHide(() => {
     </button>
     <view
       class="color-picker__camera-back"
-      :style="buttonStyle"
       :class="{ 'color-picker__camera-back--flipped': cameraFlag }"
       @tap.stop="handleCamera"
     >
@@ -393,90 +473,80 @@ useDidHide(() => {
       />
     </view>
 
-    <view class="color-picker__panel" :style="buttonStyle">
-      <view class="color-picker__header">
-        <view class="color-picker__input-group">
-          <view class="color-picker__hex-input-container" :style="buttonStyle">
-            <text class="color-picker__hex-prefix" :style="textColor">#</text>
-            <input
-              type="text"
-              class="color-picker__hex-input"
-              :value="hexColor.slice(1)"
-              :style="textColor"
-              confirm-type="done"
-              placeholder="颜色值"
-              :placeholder-style="`color:${textColor}`"
-              @input="handleHexInput"
-              @confirm="handleHexInputConfirm"
-              @blur="handleHexInputConfirm"
-              :disabled="lock"
-            />
-          </view>
-          <input
-            type="text"
-            class="color-picker__preset-input-name"
-            v-model="newPresetName"
-            placeholder="预设名称"
-            :placeholder-style="`color:${textColor}`"
-            :style="buttonStyle"
-            :disabled="lock"
-          />
-          <button
-            class="color-picker__add-preset-btn"
-            title="添加当前颜色到预设"
-            :style="buttonStyle"
-            @tap="addPreset"
-            :disabled="lock"
-          >
-            添加到预设
-          </button>
-        </view>
-      </view>
+    <!-- 底部指示条 -->
+    <view
+      class="color-picker__indicator"
+      :class="{ 'color-picker__indicator--hidden': panelVisible }"
+    ></view>
 
-      <view class="color-picker__presets">
+    <!-- 控制面板 - 底部抽屉 -->
+    <view
+      class="color-picker__panel"
+      :class="{ 'color-picker__panel--visible': panelVisible }"
+      @tap.stop
+    >
+      <!-- 拖拽把手 -->
+      <view class="color-picker__handle"></view>
+
+      <!-- 预设色圆列表 -->
+      <view
+        class="color-picker__presets"
+        :class="{ 'color-picker__presets--dragging': isDragging }"
+        @touchmove="onListTouchMove"
+        @touchend="endDrag"
+      >
         <view class="color-picker__preset-list">
           <view
-            v-for="(item, index) in presetList"
-            :key="index"
+            v-for="({ item, origIdx }) in displayPresets"
+            :key="origIdx"
             class="color-picker__preset-item"
             :class="{
               'color-picker__preset-item--active':
                 item.color === activePreset &&
                 item.brightness === activeData.brightness,
+              'color-picker__preset-item--dragging':
+                isDragging && origIdx === draggingOrigIdx,
             }"
-            @tap="selectPreset(item)"
+            @tap.stop="handlePresetTap(item)"
+            @longpress.stop="startDrag(origIdx, $event)"
           >
             <view
-              class="color-picker__preset-color"
-              :style="{ backgroundColor: item.color }"
+              class="color-picker__preset-circle"
+              :style="{
+                backgroundColor: item.color,
+                ...(item.color === activePreset && item.brightness === activeData.brightness
+                  ? activePresetRingStyle
+                  : {}),
+              }"
             ></view>
             <view
               class="color-picker__preset-name"
-              :style="{ color: textColor }"
-              >{{ item.name }}</view
-            >
+              :style="{ color: panelTextColor }"
+            >{{ item.name }}</view>
+            <!-- 激活指示条 -->
+            <view
+              v-if="item.color === activePreset && item.brightness === activeData.brightness"
+              class="color-picker__preset-indicator"
+              :style="{ backgroundColor: panelTextColor }"
+            ></view>
             <view
               class="color-picker__preset-delete"
-              :style="{ color: textColor }"
-              @tap.stop="lock ? showLockMessage() : deletePreset(index)"
-              :class="{ 'disabled': lock }"
-              >x
-            </view>
+              @tap.stop="handlePresetDelete(origIdx)"
+            >×</view>
           </view>
         </view>
       </view>
 
+      <!-- 滑块控制区 -->
       <view class="color-picker__controls">
-        <view
-          class="color-picker__slider-container color-picker__slider-container--color"
-        >
+        <view class="color-picker__slider-container color-picker__slider-container--color">
           <slider
             :min="-15"
             :max="365"
             :step="1"
-            :block-size="28"
+            :block-size="26"
             :value="hueValue"
-            trackSize="20"
+            trackSize="18"
             activeColor="transparent"
             class="color-picker__slider color-picker__slider--color"
             @changing="(e) => updateBackgroundColor(e, 'color')"
@@ -486,77 +556,102 @@ useDidHide(() => {
         </view>
 
         <view class="color-picker__slider-container">
-          <text class="color-picker__slider-title" :style="{ color: textColor }"
-            >饱和度</text
-          >
+          <text class="color-picker__slider-label" :style="{ color: panelTextColor }">饱</text>
           <slider
             :min="-5"
             :max="105"
             :step="1"
-            :block-size="28"
+            :block-size="26"
             :value="saturationValue"
-            trackSize="20"
+            trackSize="18"
             activeColor="transparent"
             class="color-picker__slider color-picker__slider--saturation"
             @changing="(e) => updateBackgroundColor(e, 'saturation')"
             @change="(e) => updateBackgroundColor(e, 'saturation')"
+            :disabled="lock"
           />
         </view>
 
         <view class="color-picker__slider-container">
-          <text class="color-picker__slider-title" :style="{ color: textColor }"
-            >明度</text
-          >
+          <text class="color-picker__slider-label" :style="{ color: panelTextColor }">明</text>
           <slider
             :min="-5"
             :max="105"
             :step="1"
+            :block-size="26"
             activeColor="transparent"
             :value="lightness"
+            trackSize="18"
             class="color-picker__slider color-picker__slider--lightness"
             @changing="(e) => updateBackgroundColor(e, 'lightness')"
             @change="(e) => updateBackgroundColor(e, 'lightness')"
+            :disabled="lock"
           />
         </view>
 
         <view class="color-picker__slider-container">
-          <text class="color-picker__slider-title" :style="{ color: textColor }"
-            >显示亮度</text
-          >
+          <text class="color-picker__slider-label" :style="{ color: panelTextColor }">亮</text>
           <slider
             :min="-5"
             :max="105"
             :step="1"
+            :block-size="26"
             activeColor="transparent"
             :value="brightness"
+            trackSize="18"
             class="color-picker__slider color-picker__slider--brightness"
             @changing="updateScreenBrightness"
             @change="updateScreenBrightness"
+            :disabled="lock"
           />
         </view>
       </view>
-    </view>
-    <view class="color-picker__actions">
-      <button
-        class="color-picker__toggle-btn"
-        :style="buttonStyle"
-        @tap="handleOptionBoxVisible"
-        @longpress="handleLock"
-      >
-        <image
-          v-if="lock"
-          :style="[
-            {
-              fill: textColor,
-              color: textColor,
-              width: '20px',
-              height: '20px',
-            },
-          ]"
-          src="/src/assets/svg/lock.svg"
-          class="camera-icon"
-        />{{ hidden ? "显示" : "隐藏" }}
-      </button>
+
+      <!-- 底栏：HEX输入 + 预设名称 + 锁定 -->
+      <view class="color-picker__footer">
+        <view class="color-picker__hex-input-container" :style="panelButtonStyle">
+          <text class="color-picker__hex-prefix" :style="{ color: panelTextColor }">#</text>
+          <input
+            type="text"
+            class="color-picker__hex-input"
+            :value="hexColor.slice(1)"
+            :style="{ color: panelTextColor }"
+            confirm-type="done"
+            placeholder="颜色值"
+            :placeholder-style="`color:${panelTextColor};opacity:0.5`"
+            @input="handleHexInput"
+            @confirm="handleHexInputConfirm"
+            @blur="handleHexInputConfirm"
+            :disabled="lock"
+          />
+        </view>
+        <input
+          type="text"
+          class="color-picker__preset-input-name"
+          v-model="newPresetName"
+          placeholder="预设名称"
+          :placeholder-style="`color:${panelTextColor};opacity:0.5`"
+          :style="panelButtonStyle"
+          :disabled="lock"
+        />
+        <button
+          class="color-picker__add-preset-btn"
+          :style="panelButtonStyle"
+          @tap.stop="addPreset"
+          :disabled="lock"
+        >+</button>
+        <button
+          class="color-picker__lock-btn"
+          :style="panelButtonStyle"
+          @tap.stop
+          @longpress.stop="handleLock"
+        >
+          <image
+            :style="{ fill: panelTextColor, color: panelTextColor, width: '28px', height: '28px', opacity: lock ? 1 : 0.45 }"
+            src="/src/assets/svg/lock.svg"
+          />
+        </button>
+      </view>
     </view>
   </view>
 </template>

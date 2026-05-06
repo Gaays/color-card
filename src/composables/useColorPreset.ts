@@ -126,10 +126,18 @@ export function useColorPreset() {
     presetList.value.splice(index, 1);
   };
 
+  const reorderPreset = (fromIndex: number, toIndex: number) => {
+    const list = [...presetList.value];
+    const [item] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, item);
+    presetList.value = list;
+  };
+
   return {
     presetList,
     loadPresets,
     addPreset,
     deletePreset,
+    reorderPreset,
   };
 }

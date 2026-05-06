@@ -22,17 +22,38 @@ export const hslToHex = (h: number, s: number, l: number): string => {
 };
 
 /**
- * 根据背景色计算文字颜色
+ * 根据背景色计算文字颜色（用于屏幕区域）
  */
 export const getTextColor = (h: number, s: number, l: number): string => {
-  // 根据背景色的亮度决定文字颜色
   if (l < 50) {
-    // 深色背景使用柔和的浅色文字
     return `hsla(${h}, 15%, 90%, 1)`;
   } else {
-    // 浅色背景使用柔和的深色文字
     return `hsla(${h}, 15%, 20%, 1)`;
   }
+};
+
+/**
+ * 根据背景色计算面板内文字颜色
+ * 面板自身叠加了 rgba(0,0,0,0.42) 的深色遮罩，实际亮度 = l * 0.58
+ * 当混合后亮度 > 45% 时，面板仍偏浅，需用深色文字；否则用浅色文字
+ */
+export const getPanelTextColor = (h: number, s: number, l: number): string => {
+  const blendedL = l * 0.58;
+  if (blendedL > 45) {
+    return `hsla(${h}, 20%, 12%, 0.9)`;
+  }
+  return `hsla(${h}, 10%, 93%, 0.95)`;
+};
+
+/**
+ * 根据背景色计算面板内边框/线框颜色
+ */
+export const getPanelBorderColor = (h: number, s: number, l: number): string => {
+  const blendedL = l * 0.58;
+  if (blendedL > 45) {
+    return `hsla(${h}, 15%, 10%, 0.3)`;
+  }
+  return `rgba(255, 255, 255, 0.22)`;
 };
 
 /**
