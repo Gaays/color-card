@@ -50,6 +50,28 @@ const brightness = ref(50);
 const panelVisible = ref(true);
 const lock = ref(false);
 
+// 滑块双击重置
+const lastTapTimes: Record<string, number> = { saturation: 0, lightness: 0, brightness: 0 };
+
+const handleSliderLabelTap = (type: 'saturation' | 'lightness' | 'brightness') => {
+  if (lock.value) {
+    showLockMessage();
+    return;
+  }
+  const now = Date.now();
+  if (now - lastTapTimes[type] < 400) {
+    if (type === 'saturation') saturationValue.value = 100;
+    else if (type === 'lightness') lightness.value = 50;
+    else if (type === 'brightness') {
+      brightness.value = 100;
+      Taro.setScreenBrightness({ value: 1 });
+    }
+    updateBackgroundColor();
+    Taro.vibrateShort({ type: 'light' });
+  }
+  lastTapTimes[type] = now;
+};
+
 // 拖拽排序状态
 const isDragging = ref(false);
 const draggingOrigIdx = ref<number | null>(null);
@@ -555,55 +577,64 @@ useDidHide(() => {
           />
         </view>
 
-        <view class="color-picker__slider-container">
-          <text class="color-picker__slider-label" :style="{ color: panelTextColor }">饱</text>
-          <slider
-            :min="-5"
-            :max="105"
-            :step="1"
-            :block-size="26"
-            :value="saturationValue"
-            trackSize="18"
-            activeColor="transparent"
-            class="color-picker__slider color-picker__slider--saturation"
-            @changing="(e) => updateBackgroundColor(e, 'saturation')"
-            @change="(e) => updateBackgroundColor(e, 'saturation')"
-            :disabled="lock"
-          />
+        <view class="color-picker__slider-container" @tap="handleSliderLabelTap('saturation')">
+          <view class="color-picker__slider-label" :style="{ color: panelTextColor }">饱</view>
+          <view class="color-picker__slider-wrap" @tap.stop>
+            <slider
+              :min="-5"
+              :max="105"
+              :step="1"
+              :block-size="26"
+              :value="saturationValue"
+              trackSize="18"
+              activeColor="transparent"
+              class="color-picker__slider color-picker__slider--saturation"
+              @changing="(e) => updateBackgroundColor(e, 'saturation')"
+              @change="(e) => updateBackgroundColor(e, 'saturation')"
+              :disabled="lock"
+            />
+            <text class="color-picker__slider-value">{{ saturationValue }}%</text>
+          </view>
         </view>
 
-        <view class="color-picker__slider-container">
-          <text class="color-picker__slider-label" :style="{ color: panelTextColor }">明</text>
-          <slider
-            :min="-5"
-            :max="105"
-            :step="1"
-            :block-size="26"
-            activeColor="transparent"
-            :value="lightness"
-            trackSize="18"
-            class="color-picker__slider color-picker__slider--lightness"
-            @changing="(e) => updateBackgroundColor(e, 'lightness')"
-            @change="(e) => updateBackgroundColor(e, 'lightness')"
-            :disabled="lock"
-          />
+        <view class="color-picker__slider-container" @tap="handleSliderLabelTap('lightness')">
+          <view class="color-picker__slider-label" :style="{ color: panelTextColor }">明</view>
+          <view class="color-picker__slider-wrap" @tap.stop>
+            <slider
+              :min="-5"
+              :max="105"
+              :step="1"
+              :block-size="26"
+              activeColor="transparent"
+              :value="lightness"
+              trackSize="18"
+              class="color-picker__slider color-picker__slider--lightness"
+              @changing="(e) => updateBackgroundColor(e, 'lightness')"
+              @change="(e) => updateBackgroundColor(e, 'lightness')"
+              :disabled="lock"
+            />
+            <text class="color-picker__slider-value">{{ lightness }}%</text>
+          </view>
         </view>
 
-        <view class="color-picker__slider-container">
-          <text class="color-picker__slider-label" :style="{ color: panelTextColor }">亮</text>
-          <slider
-            :min="-5"
-            :max="105"
-            :step="1"
-            :block-size="26"
-            activeColor="transparent"
-            :value="brightness"
-            trackSize="18"
-            class="color-picker__slider color-picker__slider--brightness"
-            @changing="updateScreenBrightness"
-            @change="updateScreenBrightness"
-            :disabled="lock"
-          />
+        <view class="color-picker__slider-container" @tap="handleSliderLabelTap('brightness')">
+          <view class="color-picker__slider-label" :style="{ color: panelTextColor }">亮</view>
+          <view class="color-picker__slider-wrap" @tap.stop>
+            <slider
+              :min="-5"
+              :max="105"
+              :step="1"
+              :block-size="26"
+              activeColor="transparent"
+              :value="brightness"
+              trackSize="18"
+              class="color-picker__slider color-picker__slider--brightness"
+              @changing="updateScreenBrightness"
+              @change="updateScreenBrightness"
+              :disabled="lock"
+            />
+            <text class="color-picker__slider-value">{{ Math.round(brightness) }}%</text>
+          </view>
         </view>
       </view>
 

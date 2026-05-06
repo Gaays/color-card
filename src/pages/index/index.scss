@@ -123,6 +123,7 @@
   // 预设列表区域
   &__presets {
     overflow-x: auto;
+    // 不设 overflow-y，避免隐式裁切绝对定位的 × 按钮
     margin-bottom: 18px;
 
     &::-webkit-scrollbar {
@@ -134,7 +135,8 @@
     display: flex;
     gap: 16px;
     align-items: flex-start;
-    padding: 4px 4px 8px;
+    // padding-top 留出 × 按钮向上溢出的空间（绝对定位 top:-6px）
+    padding: 14px 8px 8px;
     min-width: min-content;
   }
 
@@ -239,7 +241,7 @@
 
     wx-slider {
       margin: 0;
-      flex: 1;
+      width: 100%;
 
       .wx-slider-handle-wrapper {
         height: 46px;
@@ -258,18 +260,43 @@
     gap: 14px;
 
     &--color {
+      // 色相滑块没有 wrap，直接让 slider 撑满
       .color-picker__slider {
+        flex: 1;
         z-index: 1;
       }
     }
   }
 
   &__slider-label {
-    width: 28px;
+    width: 44px;
     font-size: 24px;
     text-align: center;
     flex-shrink: 0;
     opacity: 0.85;
+    // 扩大点击区域，便于双击重置
+    padding: 12px 6px;
+    margin: -12px -6px;
+  }
+
+  // 包裹 slider 和居中数值
+  &__slider-wrap {
+    position: relative;
+    flex: 1;
+  }
+
+  &__slider-value {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    font-size: 22px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.95);
+    text-shadow: 0 1px 5px rgba(0, 0, 0, 0.75), 0 0 2px rgba(0, 0, 0, 0.5);
+    z-index: 2;
+    white-space: nowrap;
   }
 
   &__slider {
